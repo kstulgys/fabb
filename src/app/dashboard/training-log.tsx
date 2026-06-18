@@ -414,6 +414,7 @@ function LogRow({
   const deleteLog = useMutation(api.trainingLogs.deleteLog);
   const setAttended = useMutation(api.trainingLogs.setAttended);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const hearts = log.intensity > 0 ? "❤".repeat(log.intensity) : "—";
   const kcal =
     log.kcalMin != null && log.kcalMax != null
@@ -421,70 +422,86 @@ function LogRow({
       : "—";
 
   return (
-    <Flex
-      borderWidth="1px"
-      borderRadius="lg"
-      p="3"
-      gap="3"
-      align="center"
-      justify="space-between"
-    >
-      <Box>
-        <Flex gap="2" align="baseline">
-          <Text fontWeight="semibold">{log.className}</Text>
-          <Badge
-            colorPalette={log.attended ? "green" : "gray"}
-            variant="subtle"
-          >
-            {log.attended ? "Attended" : "Missed"}
-          </Badge>
-        </Flex>
-        <Flex gap="4" mt="1" fontSize="sm" color="fg.muted" wrap="wrap">
-          <Text>{log.date}</Text>
-          <Text color="red.500">{hearts}</Text>
-          <Text>{kcal}</Text>
-        </Flex>
-      </Box>
-      <Flex gap="2" flexShrink="0">
-        {log.bookingId !== undefined && (
+    <Stack borderWidth="1px" borderRadius="lg" p="3" gap="2">
+      <Flex gap="3" align="center" justify="space-between">
+        <Box>
+          <Flex gap="2" align="baseline">
+            <Text fontWeight="semibold">{log.className}</Text>
+            <Badge
+              colorPalette={log.attended ? "green" : "gray"}
+              variant="subtle"
+            >
+              {log.attended ? "Attended" : "Missed"}
+            </Badge>
+          </Flex>
+          <Flex gap="4" mt="1" fontSize="sm" color="fg.muted" wrap="wrap">
+            <Text>{log.date}</Text>
+            <Text color="red.500">{hearts}</Text>
+            <Text>{kcal}</Text>
+          </Flex>
+        </Box>
+        <Flex gap="2" flexShrink="0">
+          {log.bookingId !== undefined && (
+            <Button
+              size="sm"
+              variant="outline"
+              colorPalette={log.attended ? "orange" : "green"}
+              disabled={busy}
+              onClick={() => {
+                setBusy(true);
+                setError(null);
+                void setAttended({
+                  logId: log._id,
+                  attended: !log.attended,
+                })
+                  .catch((e) =>
+                    setError(
+                      e instanceof Error
+                        ? e.message
+                        : "Couldn't update the log.",
+                    ),
+                  )
+                  .finally(() => setBusy(false));
+              }}
+            >
+              {log.attended ? "Didn't go" : "Mark attended"}
+            </Button>
+          )}
           <Button
             size="sm"
             variant="outline"
-            colorPalette={log.attended ? "orange" : "green"}
+            disabled={busy}
+            onClick={() => onEdit(log)}
+          >
+            Edit
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            colorPalette="red"
             disabled={busy}
             onClick={() => {
               setBusy(true);
-              void setAttended({
-                logId: log._id,
-                attended: !log.attended,
-              }).finally(() => setBusy(false));
+              setError(null);
+              void deleteLog({ logId: log._id })
+                .catch((e) =>
+                  setError(
+                    e instanceof Error ? e.message : "Couldn't delete the log.",
+                  ),
+                )
+                .finally(() => setBusy(false));
             }}
           >
-            {log.attended ? "Didn't go" : "Mark attended"}
+            Delete
           </Button>
-        )}
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={busy}
-          onClick={() => onEdit(log)}
-        >
-          Edit
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          colorPalette="red"
-          disabled={busy}
-          onClick={() => {
-            setBusy(true);
-            void deleteLog({ logId: log._id }).finally(() => setBusy(false));
-          }}
-        >
-          Delete
-        </Button>
+        </Flex>
       </Flex>
-    </Flex>
+      {error && (
+        <Text fontSize="sm" color="red.600">
+          {error}
+        </Text>
+      )}
+    </Stack>
   );
 }
 

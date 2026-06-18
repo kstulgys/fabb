@@ -76,6 +76,7 @@ function RuleRow({ rule }: { rule: Doc<"autoBookRules"> }) {
   const setEnabled = useMutation(api.autoBookRules.setRuleEnabled);
   const deleteRule = useMutation(api.autoBookRules.deleteRule);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const runs = useQuery(api.autoBook.recentRuns, { ruleId: rule._id });
 
   return (
@@ -108,10 +109,17 @@ function RuleRow({ rule }: { rule: Doc<"autoBookRules"> }) {
             disabled={busy}
             onClick={() => {
               setBusy(true);
+              setError(null);
               void setEnabled({
                 ruleId: rule._id,
                 enabled: !rule.enabled,
-              }).finally(() => setBusy(false));
+              })
+                .catch((e) =>
+                  setError(
+                    e instanceof Error ? e.message : "Couldn't update the rule.",
+                  ),
+                )
+                .finally(() => setBusy(false));
             }}
           >
             {rule.enabled ? "Disable" : "Enable"}
@@ -123,9 +131,14 @@ function RuleRow({ rule }: { rule: Doc<"autoBookRules"> }) {
             disabled={busy}
             onClick={() => {
               setBusy(true);
-              void deleteRule({ ruleId: rule._id }).finally(() =>
-                setBusy(false),
-              );
+              setError(null);
+              void deleteRule({ ruleId: rule._id })
+                .catch((e) =>
+                  setError(
+                    e instanceof Error ? e.message : "Couldn't delete the rule.",
+                  ),
+                )
+                .finally(() => setBusy(false));
             }}
           >
             Delete
@@ -133,6 +146,11 @@ function RuleRow({ rule }: { rule: Doc<"autoBookRules"> }) {
         </Flex>
       </Flex>
       <RuleRunLog runs={runs} />
+      {error && (
+        <Text fontSize="sm" color="red.600">
+          {error}
+        </Text>
+      )}
     </Stack>
   );
 }
