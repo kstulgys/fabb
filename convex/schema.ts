@@ -97,7 +97,12 @@ const schema = defineSchema({
         message: v.string(),
       }),
     ),
-  }).index("by_user_and_pid_and_date", ["userId", "pid", "date"]),
+  })
+    .index("by_user_and_pid_and_date", ["userId", "pid", "date"])
+    // The conversion cron (issue 10) runs in system context with no caller
+    // userId, so it fetches a finished class's bookings across all Users by
+    // (pid, date) — mirroring the same key on `classes`.
+    .index("by_pid_and_date", ["pid", "date"]),
 
   /**
    * A standing AutoBook rule: a recurring-weekly instruction to book one class
@@ -172,7 +177,11 @@ const schema = defineSchema({
     attended: v.boolean(),
     // Set only by the booking-sourced path (issue 10); a manual log omits it.
     bookingId: v.optional(v.id("bookings")),
-  }).index("by_user_and_date", ["userId", "date"]),
+  })
+    .index("by_user_and_date", ["userId", "date"])
+    // One Training log per Booking: the conversion cron (issue 10) looks a
+    // Booking up here before inserting, so a re-run never double-creates.
+    .index("by_bookingId", ["bookingId"]),
 });
 
 export default schema;

@@ -401,8 +401,9 @@ function EditLogDialog({
   );
 }
 
-/** One log in the history with its edit + delete controls. Delete is
- * owner-scoped server-side; `busy` blocks a double-fire mid-flight. */
+/** One log in the history with its controls. A booking-sourced log also gets a
+ * "didn't go" toggle (`setAttended`); edit, delete and the toggle are all
+ * owner-scoped server-side and `busy` blocks a double-fire mid-flight. */
 function LogRow({
   log,
   onEdit,
@@ -411,6 +412,7 @@ function LogRow({
   onEdit: (log: Doc<"trainingLogs">) => void;
 }) {
   const deleteLog = useMutation(api.trainingLogs.deleteLog);
+  const setAttended = useMutation(api.trainingLogs.setAttended);
   const [busy, setBusy] = useState(false);
   const hearts = log.intensity > 0 ? "❤".repeat(log.intensity) : "—";
   const kcal =
@@ -444,6 +446,23 @@ function LogRow({
         </Flex>
       </Box>
       <Flex gap="2" flexShrink="0">
+        {log.bookingId !== undefined && (
+          <Button
+            size="sm"
+            variant="outline"
+            colorPalette={log.attended ? "orange" : "green"}
+            disabled={busy}
+            onClick={() => {
+              setBusy(true);
+              void setAttended({
+                logId: log._id,
+                attended: !log.attended,
+              }).finally(() => setBusy(false));
+            }}
+          >
+            {log.attended ? "Didn't go" : "Mark attended"}
+          </Button>
+        )}
         <Button
           size="sm"
           variant="outline"

@@ -28,3 +28,18 @@ test("a daily day-before cron is registered against runDayBefore", () => {
   expect(job.name).toBe(getFunctionName(internal.autoBook.runDayBefore));
   expect(job.args).toEqual([{}]);
 });
+
+// The booking→Training-log conversion cron (issue 10): an hourly job that turns
+// each completed Booking into one Training log. A unit test can't fire a real
+// cron, so this guards the wiring — it exists, runs hourly, and targets the
+// real convertCompletedBookings mutation rather than a stale/renamed reference.
+test("an hourly conversion cron is registered against convertCompletedBookings", () => {
+  const job = crons.crons["convert completed bookings"];
+
+  expect(job).toBeDefined();
+  expect(job.schedule).toEqual({ type: "interval", hours: 1 });
+  expect(job.name).toBe(
+    getFunctionName(internal.trainingLogs.convertCompletedBookings),
+  );
+  expect(job.args).toEqual([{}]);
+});
