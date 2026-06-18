@@ -38,6 +38,27 @@ const schema = defineSchema({
   })
     .index("email", ["email"])
     .index("phone", ["phone"]),
+
+  /**
+   * The pool's stable schedule for the current Mon–Sun week, cached so every
+   * User reads from Convex instead of scraping per view (ADR-0002). Keyed by
+   * `(pid, date)` for idempotent upserts; `by_date` serves the weekly read.
+   * Volatile free-spot counts are deliberately NOT stored here.
+   */
+  classes: defineTable({
+    date: v.string(), // ISO "YYYY-MM-DD" (Europe/Vilnius)
+    startTime: v.string(), // "HH:MM"
+    endTime: v.string(), // "HH:MM" ("" when the source omits it)
+    pid: v.string(),
+    name: v.string(),
+    intensity: v.number(), // count of ❤ hearts
+    // Calories are a published range, absent on some classes → omitted.
+    kcalMin: v.optional(v.number()),
+    kcalMax: v.optional(v.number()),
+    durationMin: v.optional(v.number()),
+  })
+    .index("by_pid_and_date", ["pid", "date"])
+    .index("by_date", ["date"]),
 });
 
 export default schema;

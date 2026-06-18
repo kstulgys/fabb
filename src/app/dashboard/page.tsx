@@ -1,10 +1,11 @@
 "use client";
 
-import { Box, Button, Container, Heading, Stack, Text } from "@chakra-ui/react";
+import { Button, Container, Heading, Stack, Text } from "@chakra-ui/react";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { RequireAuth } from "../require-auth";
+import { WeekCalendar } from "./week-calendar";
 
 function Dashboard() {
   const { signOut } = useAuthActions();
@@ -20,14 +21,14 @@ function Dashboard() {
           </Button>
         </Stack>
 
-        <Box borderWidth="1px" borderRadius="xl" p="6">
-          <Text>
-            Signed in as <Text as="span" fontWeight="semibold">{user?.email ?? "…"}</Text>.
+        <Text color="fg.muted" fontSize="sm">
+          Signed in as{" "}
+          <Text as="span" fontWeight="medium">
+            {user?.email ?? "…"}
           </Text>
-          <Text color="fg.muted" mt="2">
-            Your pool classes, auto-book rules and training log will appear here.
-          </Text>
-        </Box>
+        </Text>
+
+        <WeekCalendar />
       </Stack>
     </Container>
   );
