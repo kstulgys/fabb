@@ -11,13 +11,15 @@
   },
   "dependencies": {
     "@auth/core": "0.41.1",
+    "@chakra-ui/charts": "^3.36.0",
     "@chakra-ui/react": "^3.36.0",
     "@convex-dev/auth": "^0.0.94",
     "@emotion/react": "^11.14.0",
     "convex": "^1.41.0",
     "next": "16.2.9",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "recharts": "^3.8.1"
   },
   "devDependencies": {
     "@types/node": "^20",

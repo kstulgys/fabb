@@ -8,6 +8,7 @@ import { api } from "../../../convex/_generated/api";
 import { PoolDetailsForm } from "../pool-details-form";
 import { RequireAuth } from "../require-auth";
 import { AutoBookRules } from "./auto-book-rules";
+import { Stats } from "./stats";
 import { TrainingLog } from "./training-log";
 import { WeekCalendar } from "./week-calendar";
 
@@ -53,6 +54,7 @@ function Dashboard() {
             <WeekCalendar />
             <AutoBookRules />
             <TrainingLog />
+            <Stats />
           </Stack>
         )}
       </Stack>

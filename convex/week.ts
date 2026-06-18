@@ -89,6 +89,16 @@ export function tomorrowDate(now: Date): string {
   return `${y}-${m}-${d}`;
 }
 
+/**
+ * The ISO date of "today" in Europe/Vilnius ("YYYY-MM-DD"). The single Vilnius
+ * "now" → civil-date conversion the stats aggregation (issue 11) needs: every
+ * period boundary and the streak anchor then derive from this string with pure
+ * date arithmetic. Reuses the same formatter {@link weekDatesFor} relies on.
+ */
+export function todayDate(now: Date): string {
+  return vilniusDate.format(now);
+}
+
 /** The Monday-first label for an ISO-8601 weekday (Monday=1 … Sunday=7), i.e.
  * the inverse of {@link isoWeekday} for display. Centralises the 1-based →
  * 0-indexed {@link WEEKDAY_LABELS} offset. */
