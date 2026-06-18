@@ -59,6 +59,41 @@ const schema = defineSchema({
   })
     .index("by_pid_and_date", ["pid", "date"])
     .index("by_date", ["date"]),
+
+  /**
+   * One Booking: a User's reservation for a single class instance (`pid` +
+   * `date`). `source` records how it was placed — `now` for a manual "Book
+   * now", `rule` for a future AutoBook rule. `status` is the latest outcome and
+   * `runLog` is the history of attempts (each: when → outcome → message).
+   *
+   * `ruleId` (the canonical optional reference to `autoBookRules`) is added by
+   * the AutoBook slice (issue 07) together with the `autoBookRules` table it
+   * points at; `now` bookings never set it, so it is intentionally absent here.
+   */
+  bookings: defineTable({
+    userId: v.id("users"),
+    pid: v.string(),
+    date: v.string(), // ISO "YYYY-MM-DD" (Europe/Vilnius)
+    source: v.union(v.literal("rule"), v.literal("now")),
+    status: v.union(
+      v.literal("registered"),
+      v.literal("already"),
+      v.literal("full"),
+      v.literal("error"),
+    ),
+    runLog: v.array(
+      v.object({
+        at: v.number(), // epoch ms of the attempt
+        outcome: v.union(
+          v.literal("registered"),
+          v.literal("already"),
+          v.literal("full"),
+          v.literal("error"),
+        ),
+        message: v.string(),
+      }),
+    ),
+  }),
 });
 
 export default schema;

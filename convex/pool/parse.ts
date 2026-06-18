@@ -143,3 +143,30 @@ export function parseAvailability(html: string): Availability {
     max: max ? Number(max[1]) : null,
   };
 }
+
+/**
+ * The pool's booking outcome, classified from its registration-response HTML.
+ * This vocabulary (and the exact strings each maps from) is fixed by the
+ * reference `book()` (`fabb.py`), authoritative on the pool's wording. Every
+ * booking surface speaks it: the gateway's `book`, the `bookings` row, and the
+ * `bookNow` action.
+ */
+export type BookingStatus = "registered" | "already" | "full" | "error";
+
+/**
+ * Classify the pool's registration response into a {@link BookingStatus}.
+ *
+ * Ported verbatim from the reference `book()` (`fabb.py`): a success banner
+ * ("sėkmingai užsiregistravote") → `registered`; the already-registered notice
+ * ("jau esate užsiregistrav…") → `already`; any no-free-spots phrasing
+ * ("nėra (laisvų) vietų" / "vietų nebėra" / "nebėra vietų") → `full`; anything
+ * else (including an upstream failure) → `error`. Order matters: a success or
+ * already-registered banner wins over an incidental "vietų" mention, and an
+ * unrecognised response is NEVER optimistically treated as a success.
+ */
+export function parseBookingResult(html: string): BookingStatus {
+  if (html.includes("sėkmingai užsiregistravote")) return "registered";
+  if (html.includes("jau esate užsiregistrav")) return "already";
+  if (/nėra (laisvų )?vietų|vietų nebėra|nebėra vietų/.test(html)) return "full";
+  return "error";
+}

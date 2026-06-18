@@ -16,7 +16,7 @@ import { useAction } from "convex/react";
 import { useEffect, useState } from "react";
 import { api } from "../../../convex/_generated/api";
 import type { Doc } from "../../../convex/_generated/dataModel";
-import type { Availability } from "../../../convex/pool/parse";
+import type { Availability, BookingStatus } from "../../../convex/pool/parse";
 import { type ClassStatus, classStatus } from "../../../convex/week";
 
 const STATUS_META: Record<
@@ -131,11 +131,99 @@ function Fact({ label, value }: { label: string; value: string }) {
   );
 }
 
+type BookState =
+  | { kind: "idle" }
+  | { kind: "booking" }
+  | { kind: "done"; status: BookingStatus }
+  | { kind: "failed"; message: string };
+
+/** How each booking outcome reads to the User. `error` is surfaced as a
+ * failure, NEVER as success. */
+const RESULT_META: Record<BookingStatus, { palette: string; text: string }> = {
+  registered: {
+    palette: "green",
+    text: "Booked! The pool will email your confirmation — it carries the only working cancel link.",
+  },
+  already: {
+    palette: "blue",
+    text: "You're already registered. The pool emailed your confirmation and the only cancel link.",
+  },
+  full: {
+    palette: "orange",
+    text: "This class is full — no spot was booked.",
+  },
+  error: {
+    palette: "red",
+    text: "Booking didn't go through — no spot was reserved. Please try again.",
+  },
+};
+
+/**
+ * The "Book now" control plus truthful outcome feedback.
+ *
+ * Calls {@link api.book.bookNow} and reports honestly: a success, an
+ * already-registered class, and a full class are distinguished, and an `error`
+ * (whether returned or thrown) is NEVER dressed up as success. A standing note
+ * states (ADR-0001) that the pool's confirmation email carries the only working
+ * cancel link — the app has no cancellation. Re-booking is blocked only once a
+ * spot is held (registered / already); full and error stay retryable.
+ */
+function BookNow({ cls }: { cls: Doc<"classes"> }) {
+  const book = useAction(api.book.bookNow);
+  const [state, setState] = useState<BookState>({ kind: "idle" });
+
+  const onBook = () => {
+    setState({ kind: "booking" });
+    book({ pid: cls.pid, date: cls.date })
+      .then((status) => setState({ kind: "done", status }))
+      .catch((err) =>
+        setState({
+          kind: "failed",
+          message:
+            err instanceof Error ? err.message : "Booking failed. Please try again.",
+        }),
+      );
+  };
+
+  const outcome =
+    state.kind === "done"
+      ? RESULT_META[state.status]
+      : state.kind === "failed"
+        ? { palette: "red", text: state.message }
+        : null;
+  const held =
+    state.kind === "done" &&
+    (state.status === "registered" || state.status === "already");
+
+  return (
+    <Stack gap="2" align="flex-start" flex="1">
+      <Button
+        colorPalette="teal"
+        loading={state.kind === "booking"}
+        loadingText="Booking…"
+        disabled={held}
+        onClick={onBook}
+      >
+        Book now
+      </Button>
+      {outcome && (
+        <Text fontSize="sm" color={`${outcome.palette}.600`} maxW="sm">
+          {outcome.text}
+        </Text>
+      )}
+      <Text fontSize="xs" color="fg.muted" maxW="sm">
+        The pool emails a confirmation with the only working cancel link —
+        bookings can't be cancelled in the app.
+      </Text>
+    </Stack>
+  );
+}
+
 /**
  * Class detail modal: stable schedule info + the LIVE free-spot count + the
- * class's status (finished / in-progress / upcoming for today). A finished class
- * is marked and exposes no book affordance — Task 6 gates booking on
- * {@link classStatus}'s `bookable` flag.
+ * class's status (finished / in-progress / upcoming for today). A bookable
+ * class shows "Book now"; a finished one is marked and offers no booking —
+ * booking is gated on {@link classStatus}'s `bookable` flag.
  *
  * Rendered controlled: `cls` non-null opens it; the inner body is mounted only
  * while open, so the live fetch re-runs on every open.
@@ -226,14 +314,9 @@ function DetailContent({
 
       <Dialog.Footer justifyContent="space-between" gap="3">
         {bookable ? (
-          <Stack gap="1" align="flex-start">
-            <Button disabled>Book</Button>
-            <Text fontSize="xs" color="fg.muted">
-              Booking arrives in a later update.
-            </Text>
-          </Stack>
+          <BookNow key={cls._id} cls={cls} />
         ) : (
-          <Text fontSize="sm" color="fg.muted">
+          <Text fontSize="sm" color="fg.muted" flex="1">
             This class has finished — it can no longer be booked.
           </Text>
         )}

@@ -22,6 +22,9 @@ const fakeGateway: PoolGateway = {
     if (pid === "121") return eventCalAlt;
     return eventWithCalories;
   },
+  book: async () => {
+    throw new Error("scrapeWeek must not book");
+  },
 };
 
 afterEach(() => setPoolGateway(null)); // restore the real gateway

@@ -5,7 +5,12 @@ import eventWithCalories from "./fixtures/event-with-calories.html?raw";
 import eventNoCalories from "./fixtures/event-no-calories.html?raw";
 import eventCaloriesAlt from "./fixtures/event-calories-alt.html?raw";
 import eventNoMax from "./fixtures/event-no-max.html?raw";
-import { parseAvailability, parseEventDetail, parseSchedule } from "./parse";
+import {
+  parseAvailability,
+  parseBookingResult,
+  parseEventDetail,
+  parseSchedule,
+} from "./parse";
 
 describe("parseSchedule", () => {
   const classes = parseSchedule(scheduleHtml);
@@ -103,5 +108,52 @@ describe("parseAvailability", () => {
       registered: null,
       max: null,
     });
+  });
+});
+
+describe("parseBookingResult", () => {
+  // Fixtures are constructed from the documented exact response strings — a real
+  // booking response cannot be obtained without booking a real, limited spot.
+  test("classifies a successful registration", () => {
+    expect(
+      parseBookingResult(
+        "<div class='msg'>Jūs sėkmingai užsiregistravote į užsiėmimą.</div>",
+      ),
+    ).toBe("registered");
+  });
+
+  test("classifies an already-registered response", () => {
+    expect(
+      parseBookingResult("<p>Jūs jau esate užsiregistravęs į šį užsiėmimą.</p>"),
+    ).toBe("already");
+  });
+
+  test.each([
+    "atsiprašome, nėra laisvų vietų šiam užsiėmimui",
+    "deja, nėra vietų",
+    "vietų nebėra",
+    "nebėra vietų šiam užsiėmimui",
+  ])("classifies a full class from %j", (phrase) => {
+    expect(parseBookingResult(`<div>${phrase}.</div>`)).toBe("full");
+  });
+
+  test("falls back to error for an unrecognised response", () => {
+    expect(parseBookingResult("<div>Įvyko nenumatyta klaida.</div>")).toBe(
+      "error",
+    );
+  });
+
+  test("never optimistically reports success — empty input is error", () => {
+    expect(parseBookingResult("")).toBe("error");
+  });
+
+  test("a success banner wins over an incidental 'vietų' mention", () => {
+    // Registered/already are checked before the full phrasings, so a success
+    // response that also says "vietų nebėra" (for others) is still 'registered'.
+    expect(
+      parseBookingResult(
+        "<div>sėkmingai užsiregistravote — daugiau vietų nebėra kitiems.</div>",
+      ),
+    ).toBe("registered");
   });
 });

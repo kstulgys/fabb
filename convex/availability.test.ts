@@ -21,6 +21,9 @@ const fakeGateway: PoolGateway = {
     calls.push({ pid, date });
     return pid === "999" ? eventNoMax : eventWithCalories;
   },
+  book: async () => {
+    throw new Error("liveAvailability must not book");
+  },
 };
 
 afterEach(() => {
