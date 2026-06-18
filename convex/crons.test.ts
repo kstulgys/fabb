@@ -15,3 +15,16 @@ test("an hourly cron is registered against the real scrapeWeek action", () => {
   expect(job.name).toBe(getFunctionName(internal.pool.scrape.scrapeWeek));
   expect(job.args).toEqual([{}]);
 });
+
+// The day-before AutoBook cron (issue 08): a once-daily job that books
+// tomorrow's matching rules. Unit-asserting the wiring (a unit test can't fire
+// a real cron) — it exists, runs on a daily cron spec, and targets the real
+// runDayBefore mutation rather than a stale/renamed reference.
+test("a daily day-before cron is registered against runDayBefore", () => {
+  const job = crons.crons["auto-book day-before"];
+
+  expect(job).toBeDefined();
+  expect(job.schedule).toEqual({ type: "cron", cron: "0 5 * * *" });
+  expect(job.name).toBe(getFunctionName(internal.autoBook.runDayBefore));
+  expect(job.args).toEqual([{}]);
+});

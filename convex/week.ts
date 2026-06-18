@@ -71,6 +71,24 @@ export function isoWeekday(date: string): number {
   return dow === 0 ? 7 : dow;
 }
 
+/**
+ * The ISO date of the day AFTER `now` in Europe/Vilnius ("YYYY-MM-DD").
+ *
+ * The day-before AutoBook cron (issue 08) fires on the eve of a class day and
+ * books TOMORROW's classes, so it resolves rules against this date. Mirrors
+ * {@link weekDatesFor}: take the Vilnius civil date of `now`, advance one day on
+ * a UTC-anchored civil date (immune to DST), and reformat. Pairing it with
+ * {@link isoWeekday} yields tomorrow's ISO weekday for matching rules.
+ */
+export function tomorrowDate(now: Date): string {
+  const [year, month, day] = vilniusDate.format(now).split("-").map(Number);
+  const t = new Date(Date.UTC(year, month - 1, day) + 86_400_000);
+  const y = t.getUTCFullYear();
+  const m = String(t.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(t.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
 /** The Monday-first label for an ISO-8601 weekday (Monday=1 … Sunday=7), i.e.
  * the inverse of {@link isoWeekday} for display. Centralises the 1-based →
  * 0-indexed {@link WEEKDAY_LABELS} offset. */

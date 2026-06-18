@@ -16,6 +16,56 @@ import { api } from "../../../convex/_generated/api";
 import type { Doc } from "../../../convex/_generated/dataModel";
 import { weekdayLabel } from "../../../convex/week";
 
+/** How each run outcome reads in the per-rule history. */
+const RUN_OUTCOME = {
+  registered: { label: "Booked", palette: "green" },
+  already: { label: "Already booked", palette: "green" },
+  full: { label: "Full", palette: "orange" },
+  no_match: { label: "No match", palette: "gray" },
+  no_details: { label: "Details incomplete", palette: "red" },
+  error: { label: "Error", palette: "red" },
+} as const satisfies Record<
+  Doc<"ruleRuns">["outcome"],
+  { label: string; palette: string }
+>;
+
+/**
+ * A rule's recent run outcomes (newest first), from the day-before cron's run
+ * log. Owner-scoped server-side (`recentRuns`); each badge carries the attempt
+ * date + message on hover.
+ */
+function RuleRunLog({ runs }: { runs: Doc<"ruleRuns">[] | undefined }) {
+  if (runs === undefined) return null;
+  if (runs.length === 0) {
+    return (
+      <Text fontSize="xs" color="fg.muted">
+        No runs yet — outcomes appear here after the day-before cron runs.
+      </Text>
+    );
+  }
+  return (
+    <Flex gap="1.5" wrap="wrap" align="center">
+      <Text fontSize="xs" color="fg.muted">
+        Recent runs:
+      </Text>
+      {runs.map((run) => {
+        const p = RUN_OUTCOME[run.outcome];
+        return (
+          <Badge
+            key={run._id}
+            size="sm"
+            variant="subtle"
+            colorPalette={p.palette}
+            title={`${run.date} — ${run.message}`}
+          >
+            {p.label}
+          </Badge>
+        );
+      })}
+    </Flex>
+  );
+}
+
 /**
  * One AutoBook rule with its enable/disable toggle and delete control. Both
  * mutations are owner-scoped server-side; the row only reflects and drives them.
@@ -26,57 +76,64 @@ function RuleRow({ rule }: { rule: Doc<"autoBookRules"> }) {
   const setEnabled = useMutation(api.autoBookRules.setRuleEnabled);
   const deleteRule = useMutation(api.autoBookRules.deleteRule);
   const [busy, setBusy] = useState(false);
+  const runs = useQuery(api.autoBook.recentRuns, { ruleId: rule._id });
 
   return (
-    <Flex
+    <Stack
       borderWidth="1px"
       borderRadius="lg"
       p="3"
-      gap="3"
-      align="center"
-      justify="space-between"
+      gap="2"
       opacity={rule.enabled ? 1 : 0.6}
     >
-      <Box>
-        <Flex gap="2" align="baseline">
-          <Text fontWeight="semibold">{rule.nameMatch}</Text>
-          <Badge colorPalette={rule.enabled ? "green" : "gray"} variant="subtle">
-            {rule.enabled ? "Enabled" : "Disabled"}
-          </Badge>
+      <Flex gap="3" align="center" justify="space-between">
+        <Box>
+          <Flex gap="2" align="baseline">
+            <Text fontWeight="semibold">{rule.nameMatch}</Text>
+            <Badge
+              colorPalette={rule.enabled ? "green" : "gray"}
+              variant="subtle"
+            >
+              {rule.enabled ? "Enabled" : "Disabled"}
+            </Badge>
+          </Flex>
+          <Text fontSize="sm" color="fg.muted">
+            Every {weekdayLabel(rule.weekday)} at {rule.startTime}
+          </Text>
+        </Box>
+        <Flex gap="2" flexShrink="0">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={busy}
+            onClick={() => {
+              setBusy(true);
+              void setEnabled({
+                ruleId: rule._id,
+                enabled: !rule.enabled,
+              }).finally(() => setBusy(false));
+            }}
+          >
+            {rule.enabled ? "Disable" : "Enable"}
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            colorPalette="red"
+            disabled={busy}
+            onClick={() => {
+              setBusy(true);
+              void deleteRule({ ruleId: rule._id }).finally(() =>
+                setBusy(false),
+              );
+            }}
+          >
+            Delete
+          </Button>
         </Flex>
-        <Text fontSize="sm" color="fg.muted">
-          Every {weekdayLabel(rule.weekday)} at {rule.startTime}
-        </Text>
-      </Box>
-      <Flex gap="2" flexShrink="0">
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={busy}
-          onClick={() => {
-            setBusy(true);
-            void setEnabled({
-              ruleId: rule._id,
-              enabled: !rule.enabled,
-            }).finally(() => setBusy(false));
-          }}
-        >
-          {rule.enabled ? "Disable" : "Enable"}
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          colorPalette="red"
-          disabled={busy}
-          onClick={() => {
-            setBusy(true);
-            void deleteRule({ ruleId: rule._id }).finally(() => setBusy(false));
-          }}
-        >
-          Delete
-        </Button>
       </Flex>
-    </Flex>
+      <RuleRunLog runs={runs} />
+    </Stack>
   );
 }
 

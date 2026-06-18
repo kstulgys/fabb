@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import {
   classStatus,
   isoWeekday,
+  tomorrowDate,
   WEEKDAY_LABELS,
   weekDatesFor,
   weekdayLabel,
@@ -41,6 +42,30 @@ describe("weekDatesFor (Europe/Vilnius)", () => {
     expect(WEEKDAY_LABELS.length).toBe(7);
     expect(WEEKDAY_LABELS[0]).toBe("Monday");
     expect(WEEKDAY_LABELS[6]).toBe("Sunday");
+  });
+});
+
+describe("tomorrowDate (Europe/Vilnius)", () => {
+  test("returns the next civil day for a midday instant", () => {
+    // 2026-06-18 (Thu) → 2026-06-19 (Fri).
+    expect(tomorrowDate(new Date("2026-06-18T10:00:00Z"))).toBe("2026-06-19");
+  });
+
+  test("rolls over month and year boundaries", () => {
+    expect(tomorrowDate(new Date("2026-06-30T10:00:00Z"))).toBe("2026-07-01");
+    expect(tomorrowDate(new Date("2026-12-31T10:00:00Z"))).toBe("2027-01-01");
+  });
+
+  test("uses the Vilnius civil date, not UTC, at the day boundary", () => {
+    // 22:30Z on the 18th is already 01:30 on the 19th in Vilnius (UTC+3), so
+    // "tomorrow" is the 20th. A naive UTC computation would say the 19th.
+    expect(tomorrowDate(new Date("2026-06-18T22:30:00Z"))).toBe("2026-06-20");
+  });
+
+  test("tomorrow's ISO weekday is what the cron matches rules against", () => {
+    const date = tomorrowDate(new Date("2026-06-18T10:00:00Z"));
+    expect(date).toBe("2026-06-19");
+    expect(isoWeekday(date)).toBe(5); // Friday
   });
 });
 

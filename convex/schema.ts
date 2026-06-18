@@ -74,6 +74,10 @@ const schema = defineSchema({
     userId: v.id("users"),
     pid: v.string(),
     date: v.string(), // ISO "YYYY-MM-DD" (Europe/Vilnius)
+    // Set only on `source: 'rule'` bookings — the AutoBook rule that placed it
+    // (issue 08). A deleted rule may leave this dangling; the Booking stands
+    // (ADR-0001). `now` bookings omit it.
+    ruleId: v.optional(v.id("autoBookRules")),
     source: v.union(v.literal("rule"), v.literal("now")),
     status: v.union(
       v.literal("registered"),
@@ -93,7 +97,7 @@ const schema = defineSchema({
         message: v.string(),
       }),
     ),
-  }),
+  }).index("by_user_and_pid_and_date", ["userId", "pid", "date"]),
 
   /**
    * A standing AutoBook rule: a recurring-weekly instruction to book one class
@@ -114,7 +118,34 @@ const schema = defineSchema({
     startTime: v.string(), // "HH:MM", matched against the class's startTime
     nameMatch: v.string(), // the class name to match (captured from the class)
     enabled: v.boolean(),
-  }).index("userId", ["userId"]),
+  })
+    .index("userId", ["userId"])
+    .index("by_weekday", ["weekday"]),
+
+  /**
+   * The per-rule run log (issue 08): one entry per AutoBook cron attempt for a
+   * rule on a given date. Lives in its own table (not only on `bookings`)
+   * because a `no_match`/`no_details` attempt books NOTHING yet must still be
+   * recorded — so it cannot hang off a Booking that does not exist. `bookingId`
+   * links to the Booking when the attempt produced one. The UI shows a rule's
+   * recent outcomes from here (`by_ruleId`).
+   */
+  ruleRuns: defineTable({
+    ruleId: v.id("autoBookRules"),
+    userId: v.id("users"), // owner — scopes the per-rule run-log read
+    date: v.string(), // ISO "YYYY-MM-DD" the attempt targeted (tomorrow at fire)
+    at: v.number(), // epoch ms of the attempt
+    outcome: v.union(
+      v.literal("registered"),
+      v.literal("already"),
+      v.literal("full"),
+      v.literal("error"),
+      v.literal("no_match"),
+      v.literal("no_details"),
+    ),
+    message: v.string(),
+    bookingId: v.optional(v.id("bookings")),
+  }).index("by_ruleId", ["ruleId"]),
 });
 
 export default schema;

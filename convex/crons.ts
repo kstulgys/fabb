@@ -23,4 +23,23 @@ crons.interval(
   {},
 );
 
+/**
+ * The day-before AutoBook cron (issue 08). Once a day, early on the eve of each
+ * class day, it books every enabled rule's matching class for TOMORROW
+ * (Europe/Vilnius) — see {@link internal.autoBook.runDayBefore}. `crons.cron`
+ * takes a UTC spec, so this fires ~early-morning Vilnius.
+ *
+ * HITL: the exact hour here and the retry cadence (`RETRY_BACKOFF_MS` in
+ * `autoBookAttempt.ts`) must be tuned LIVE against the pool's booking-open
+ * window; live firing is validated by a human, not in tests.
+ */
+const DAY_BEFORE_CRON = "0 5 * * *"; // 05:00 UTC daily
+
+crons.cron(
+  "auto-book day-before",
+  DAY_BEFORE_CRON,
+  internal.autoBook.runDayBefore,
+  {},
+);
+
 export default crons;
