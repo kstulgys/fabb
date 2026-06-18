@@ -1,6 +1,6 @@
 "use client";
 
-import { Box, Button, Heading, Input, Stack, Text } from "@chakra-ui/react";
+import { Box, Button, chakra, Heading, Input, Stack, Text } from "@chakra-ui/react";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -47,9 +47,9 @@ export function AuthForm() {
       <form onSubmit={handleSubmit}>
         <Stack gap="4">
           <Stack gap="1">
-            <Text as="label" htmlFor="email" fontSize="sm" fontWeight="medium">
+            <chakra.label htmlFor="email" fontSize="sm" fontWeight="medium">
               Email
-            </Text>
+            </chakra.label>
             <Input
               id="email"
               name="email"
@@ -62,9 +62,9 @@ export function AuthForm() {
           </Stack>
 
           <Stack gap="1">
-            <Text as="label" htmlFor="password" fontSize="sm" fontWeight="medium">
+            <chakra.label htmlFor="password" fontSize="sm" fontWeight="medium">
               Password
-            </Text>
+            </chakra.label>
             <Input
               id="password"
               name="password"
