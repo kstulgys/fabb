@@ -22,6 +22,7 @@ import type * as pool_gateway from "../pool/gateway.js";
 import type * as pool_parse from "../pool/parse.js";
 import type * as pool_scrape from "../pool/scrape.js";
 import type * as poolDetails from "../poolDetails.js";
+import type * as trainingLogs from "../trainingLogs.js";
 import type * as users from "../users.js";
 import type * as week from "../week.js";
 
@@ -46,6 +47,7 @@ declare const fullApi: ApiFromModules<{
   "pool/parse": typeof pool_parse;
   "pool/scrape": typeof pool_scrape;
   poolDetails: typeof poolDetails;
+  trainingLogs: typeof trainingLogs;
   users: typeof users;
   week: typeof week;
 }>;

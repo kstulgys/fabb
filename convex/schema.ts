@@ -146,6 +146,33 @@ const schema = defineSchema({
     message: v.string(),
     bookingId: v.optional(v.id("bookings")),
   }).index("by_ruleId", ["ruleId"]),
+
+  /**
+   * A Training log: a record that a User did a class, carrying its name, date,
+   * intensity and Calories (issue 09). A MANUAL log — added by the User for a
+   * class they attended without booking through the app — sets `attended: true`
+   * and has NO `bookingId`. The booking-sourced path (issue 10) sets `bookingId`
+   * to the completed Booking and may flip `attended` via a "didn't go" toggle;
+   * both fields are modelled now so that slice adds only behaviour, not schema.
+   *
+   * `intensity` is the canonical heart-count (0 when unknown, e.g. a typed past
+   * class). Calories are the pool's published RANGE, absent when unpublished — a
+   * null-calorie log still counts as attended but is excluded from calorie stats
+   * (see constraints). Scoped per User via `by_user_and_date`, which also orders
+   * the history view newest class first.
+   */
+  trainingLogs: defineTable({
+    userId: v.id("users"),
+    className: v.string(),
+    date: v.string(), // ISO "YYYY-MM-DD" (Europe/Vilnius)
+    intensity: v.number(), // count of ❤ hearts (0 = unknown / none)
+    // Calories are a published range, absent on some classes → omitted.
+    kcalMin: v.optional(v.number()),
+    kcalMax: v.optional(v.number()),
+    attended: v.boolean(),
+    // Set only by the booking-sourced path (issue 10); a manual log omits it.
+    bookingId: v.optional(v.id("bookings")),
+  }).index("by_user_and_date", ["userId", "date"]),
 });
 
 export default schema;
