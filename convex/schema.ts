@@ -94,6 +94,27 @@ const schema = defineSchema({
       }),
     ),
   }),
+
+  /**
+   * A standing AutoBook rule: a recurring-weekly instruction to book one class
+   * for its owner. Keyed by `(weekday, startTime, nameMatch)` (see CONTEXT.md);
+   * `enabled` gates it without deleting it. The day-before cron (issue 08) reads
+   * the enabled rules and books the matching class — disabling or deleting a
+   * rule only stops FUTURE bookings and never cancels a Booking already placed
+   * (ADR-0001).
+   *
+   * `weekday` is the ISO-8601 day-of-week of the class date (Monday=1 … Sunday=7,
+   * Europe/Vilnius); `week.ts#isoWeekday` derives it from a class's ISO date and
+   * the cron computes the same value for tomorrow to resolve a rule to a class.
+   * Scoped per User via the `userId` index (issue 07).
+   */
+  autoBookRules: defineTable({
+    userId: v.id("users"),
+    weekday: v.number(), // ISO-8601: Monday=1 … Sunday=7 (Europe/Vilnius)
+    startTime: v.string(), // "HH:MM", matched against the class's startTime
+    nameMatch: v.string(), // the class name to match (captured from the class)
+    enabled: v.boolean(),
+  }).index("userId", ["userId"]),
 });
 
 export default schema;

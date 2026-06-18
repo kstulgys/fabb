@@ -59,6 +59,25 @@ export function weekDatesFor(now: Date): string[] {
   return dates;
 }
 
+/**
+ * The ISO-8601 weekday of an ISO date string ("YYYY-MM-DD"): Monday=1 … Sunday=7.
+ * A civil date's weekday is timezone-independent, so this needs no Vilnius math —
+ * it reads the day at UTC midnight and maps Sunday (0) to 7. This is the value
+ * `autoBookRules.weekday` stores (issue 07); the AutoBook cron (issue 08)
+ * computes the same value for tomorrow's date to resolve a rule to its class.
+ */
+export function isoWeekday(date: string): number {
+  const dow = new Date(`${date}T00:00:00Z`).getUTCDay(); // 0=Sun … 6=Sat
+  return dow === 0 ? 7 : dow;
+}
+
+/** The Monday-first label for an ISO-8601 weekday (Monday=1 … Sunday=7), i.e.
+ * the inverse of {@link isoWeekday} for display. Centralises the 1-based →
+ * 0-indexed {@link WEEKDAY_LABELS} offset. */
+export function weekdayLabel(weekday: number): string {
+  return WEEKDAY_LABELS[weekday - 1];
+}
+
 /** Where a class sits relative to "now" on its own day (Europe/Vilnius). */
 export type ClassStatus = "finished" | "in-progress" | "upcoming";
 

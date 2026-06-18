@@ -12,12 +12,18 @@ import {
   Stack,
   Text,
 } from "@chakra-ui/react";
-import { useAction } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { useEffect, useState } from "react";
 import { api } from "../../../convex/_generated/api";
 import type { Doc } from "../../../convex/_generated/dataModel";
 import type { Availability, BookingStatus } from "../../../convex/pool/parse";
-import { type ClassStatus, classStatus } from "../../../convex/week";
+import {
+  type ClassStatus,
+  classStatus,
+  isoWeekday,
+  weekdayLabel,
+} from "../../../convex/week";
+import { CompleteDetailsPrompt } from "../complete-details-prompt";
 
 const STATUS_META: Record<
   ClassStatus,
@@ -219,6 +225,80 @@ function BookNow({ cls }: { cls: Doc<"classes"> }) {
   );
 }
 
+type AutoBookState =
+  | { kind: "idle" }
+  | { kind: "saving" }
+  | { kind: "done" }
+  | { kind: "failed"; message: string };
+
+/**
+ * The "Auto-book weekly" control: turns this class into a standing AutoBook rule
+ * (issue 07). Unlike "Book now" it is offered regardless of THIS instance's
+ * status — a rule is about future weeks. Gated on Pool details with the shared
+ * {@link CompleteDetailsPrompt} so the UX matches the booking gate: a rule with
+ * no details could never book. States plainly (ADR-0001) that disabling or
+ * deleting a rule never cancels a Booking already placed.
+ */
+function AutoBookWeekly({ cls }: { cls: Doc<"classes"> }) {
+  const details = useQuery(api.users.myPoolDetails);
+  const createRule = useMutation(api.autoBookRules.createFromClass);
+  const [state, setState] = useState<AutoBookState>({ kind: "idle" });
+
+  if (details === undefined) {
+    return <Spinner size="sm" />;
+  }
+  if (!details.detailsComplete) {
+    return (
+      <CompleteDetailsPrompt message="Complete your pool details to set up auto-booking — a rule with no details can never book." />
+    );
+  }
+
+  const weekday = weekdayLabel(isoWeekday(cls.date));
+  const onCreate = () => {
+    setState({ kind: "saving" });
+    createRule({ pid: cls.pid, date: cls.date })
+      .then(() => setState({ kind: "done" }))
+      .catch((err) =>
+        setState({
+          kind: "failed",
+          message:
+            err instanceof Error ? err.message : "Couldn't set up auto-booking.",
+        }),
+      );
+  };
+
+  return (
+    <Stack gap="2" align="flex-start">
+      <Button
+        variant="outline"
+        colorPalette="teal"
+        loading={state.kind === "saving"}
+        loadingText="Setting up…"
+        disabled={state.kind === "done"}
+        onClick={onCreate}
+      >
+        Auto-book weekly
+      </Button>
+      {state.kind === "done" && (
+        <Text fontSize="sm" color="green.600" maxW="sm">
+          Weekly auto-book set: every {weekday} at {cls.startTime} for “{cls.name}
+          ”. Manage it under Auto-book rules below.
+        </Text>
+      )}
+      {state.kind === "failed" && (
+        <Text fontSize="sm" color="red.600" maxW="sm">
+          {state.message}
+        </Text>
+      )}
+      <Text fontSize="xs" color="fg.muted" maxW="sm">
+        Books “{cls.name}” every {weekday} at {cls.startTime} from next week on.
+        Disabling or deleting the rule stops future bookings but never cancels a
+        booking already placed.
+      </Text>
+    </Stack>
+  );
+}
+
 /**
  * Class detail modal: stable schedule info + the LIVE free-spot count + the
  * class's status (finished / in-progress / upcoming for today). A bookable
@@ -312,14 +392,21 @@ function DetailContent({
         </Stack>
       </Dialog.Body>
 
-      <Dialog.Footer justifyContent="space-between" gap="3">
-        {bookable ? (
-          <BookNow key={cls._id} cls={cls} />
-        ) : (
-          <Text fontSize="sm" color="fg.muted" flex="1">
-            This class has finished — it can no longer be booked.
-          </Text>
-        )}
+      <Dialog.Footer
+        justifyContent="space-between"
+        gap="3"
+        alignItems="flex-start"
+      >
+        <Stack gap="4" flex="1">
+          {bookable ? (
+            <BookNow key={cls._id} cls={cls} />
+          ) : (
+            <Text fontSize="sm" color="fg.muted">
+              This class has finished — it can no longer be booked.
+            </Text>
+          )}
+          <AutoBookWeekly key={`autobook-${cls._id}`} cls={cls} />
+        </Stack>
         <Button variant="outline" onClick={onClose}>
           Close
         </Button>

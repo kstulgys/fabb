@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { api } from "../../../convex/_generated/api";
 import { PoolDetailsForm } from "../pool-details-form";
 import { RequireAuth } from "../require-auth";
+import { AutoBookRules } from "./auto-book-rules";
 import { WeekCalendar } from "./week-calendar";
 
 function Dashboard() {
@@ -47,7 +48,10 @@ function Dashboard() {
             submitLabel="Save and continue"
           />
         ) : (
-          <WeekCalendar />
+          <Stack gap="10">
+            <WeekCalendar />
+            <AutoBookRules />
+          </Stack>
         )}
       </Stack>
     </Container>

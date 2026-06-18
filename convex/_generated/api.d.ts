@@ -9,6 +9,7 @@
  */
 
 import type * as auth from "../auth.js";
+import type * as autoBookRules from "../autoBookRules.js";
 import type * as book from "../book.js";
 import type * as bookings from "../bookings.js";
 import type * as classes from "../classes.js";
@@ -30,6 +31,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
+  autoBookRules: typeof autoBookRules;
   book: typeof book;
   bookings: typeof bookings;
   classes: typeof classes;

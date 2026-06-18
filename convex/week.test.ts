@@ -1,5 +1,11 @@
 import { describe, expect, test } from "vitest";
-import { classStatus, WEEKDAY_LABELS, weekDatesFor } from "./week";
+import {
+  classStatus,
+  isoWeekday,
+  WEEKDAY_LABELS,
+  weekDatesFor,
+  weekdayLabel,
+} from "./week";
 
 describe("weekDatesFor (Europe/Vilnius)", () => {
   test("returns the seven Mon→Sun dates for a midweek instant", () => {
@@ -35,6 +41,25 @@ describe("weekDatesFor (Europe/Vilnius)", () => {
     expect(WEEKDAY_LABELS.length).toBe(7);
     expect(WEEKDAY_LABELS[0]).toBe("Monday");
     expect(WEEKDAY_LABELS[6]).toBe("Sunday");
+  });
+});
+
+describe("isoWeekday + weekdayLabel", () => {
+  test("maps ISO dates to ISO-8601 weekdays (Mon=1 … Sun=7)", () => {
+    expect(isoWeekday("2026-06-15")).toBe(1); // Monday
+    expect(isoWeekday("2026-06-18")).toBe(4); // Thursday
+    expect(isoWeekday("2026-06-21")).toBe(7); // Sunday
+  });
+
+  test("agrees with weekDatesFor's Monday-first ordering", () => {
+    const dates = weekDatesFor(new Date("2026-06-18T08:00:00Z"));
+    dates.forEach((date, i) => expect(isoWeekday(date)).toBe(i + 1));
+  });
+
+  test("weekdayLabel maps an ISO weekday to its Monday-first label", () => {
+    expect(weekdayLabel(1)).toBe("Monday");
+    expect(weekdayLabel(4)).toBe("Thursday");
+    expect(weekdayLabel(7)).toBe("Sunday");
   });
 });
 
