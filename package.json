@@ -6,9 +6,14 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "vitest run"
   },
   "dependencies": {
+    "@auth/core": "0.41.1",
+    "@chakra-ui/react": "^3.36.0",
+    "@convex-dev/auth": "^0.0.94",
+    "@emotion/react": "^11.14.0",
     "convex": "^1.41.0",
     "next": "16.2.9",
     "react": "19.2.4",
@@ -21,6 +26,7 @@
     "babel-plugin-react-compiler": "1.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.2.9",
+    "jose": "^6.2.3",
     "typescript": "^5"
   },
   "ignoreScripts": [
