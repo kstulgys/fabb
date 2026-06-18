@@ -16,6 +16,15 @@ const vilniusDate = new Intl.DateTimeFormat("en-CA", {
   day: "2-digit",
 });
 
+// Same instant, the Vilnius wall-clock time. `h23` forces a 00–23 hour so the
+// parsed minute-of-day is unambiguous at midnight.
+const vilniusClock = new Intl.DateTimeFormat("en-GB", {
+  timeZone: TIME_ZONE,
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+
 /** Mon→Sun day labels, aligned with the order {@link weekDatesFor} returns. */
 export const WEEKDAY_LABELS = [
   "Monday",
@@ -48,4 +57,67 @@ export function weekDatesFor(now: Date): string[] {
     dates.push(`${y}-${m}-${dd}`);
   }
   return dates;
+}
+
+/** Where a class sits relative to "now" on its own day (Europe/Vilnius). */
+export type ClassStatus = "finished" | "in-progress" | "upcoming";
+
+export interface ClassTiming {
+  status: ClassStatus;
+  /**
+   * Whether the class may still be booked. A `finished` class is NEVER bookable
+   * (ADR/AC: today's finished classes can't be booked); `in-progress` and
+   * `upcoming` are. Task 6's book affordance gates on exactly this flag.
+   */
+  bookable: boolean;
+}
+
+/** Minutes-of-day for a "HH:MM" (or "HH:MM:SS") wall-clock string. */
+function toMinutes(hhmm: string): number {
+  const [h, m] = hhmm.split(":");
+  return Number(h) * 60 + Number(m);
+}
+
+/** Minutes-of-day of `now` in Europe/Vilnius, read via the locale parts so a
+ * locale's time separator can't break parsing. */
+function vilniusMinutes(now: Date): number {
+  const parts = vilniusClock.formatToParts(now);
+  const hour = Number(parts.find((p) => p.type === "hour")?.value);
+  const minute = Number(parts.find((p) => p.type === "minute")?.value);
+  return hour * 60 + minute;
+}
+
+/**
+ * The status of a class at instant `now`, in Europe/Vilnius, and whether it is
+ * still bookable.
+ *
+ * Time-marking mirrors the reference `render_day`: only the class's own day is
+ * compared by the clock. A class on an earlier day this week is `finished`; one
+ * on a later day is `upcoming`. Today, it is `finished` once its end has passed,
+ * `in-progress` while running, else `upcoming`. End falls back to start when the
+ * source omits it (mirrors `end_minutes`). ISO dates compare lexically.
+ */
+export function classStatus(
+  cls: { date: string; startTime: string; endTime: string },
+  now: Date,
+): ClassTiming {
+  const today = vilniusDate.format(now);
+  let status: ClassStatus;
+  if (cls.date < today) {
+    status = "finished";
+  } else if (cls.date > today) {
+    status = "upcoming";
+  } else {
+    const nowMin = vilniusMinutes(now);
+    const startMin = toMinutes(cls.startTime);
+    const endMin = toMinutes(cls.endTime || cls.startTime);
+    if (endMin <= nowMin) {
+      status = "finished";
+    } else if (startMin <= nowMin) {
+      status = "in-progress";
+    } else {
+      status = "upcoming";
+    }
+  }
+  return { status, bookable: status !== "finished" };
 }

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { WEEKDAY_LABELS, weekDatesFor } from "./week";
+import { classStatus, WEEKDAY_LABELS, weekDatesFor } from "./week";
 
 describe("weekDatesFor (Europe/Vilnius)", () => {
   test("returns the seven Mon→Sun dates for a midweek instant", () => {
@@ -35,5 +35,88 @@ describe("weekDatesFor (Europe/Vilnius)", () => {
     expect(WEEKDAY_LABELS.length).toBe(7);
     expect(WEEKDAY_LABELS[0]).toBe("Monday");
     expect(WEEKDAY_LABELS[6]).toBe("Sunday");
+  });
+});
+
+describe("classStatus (Europe/Vilnius)", () => {
+  // A Thursday class, 07:00–07:50. Vilnius is UTC+3 in June, so its wall-clock
+  // window 07:00–07:50 is 04:00Z–04:50Z.
+  const cls = { date: "2026-06-18", startTime: "07:00", endTime: "07:50" };
+
+  test("before the start it is upcoming and bookable", () => {
+    expect(classStatus(cls, new Date("2026-06-18T03:59:00Z"))).toEqual({
+      status: "upcoming",
+      bookable: true,
+    });
+  });
+
+  test("exactly at the start it is in-progress and bookable", () => {
+    expect(classStatus(cls, new Date("2026-06-18T04:00:00Z"))).toEqual({
+      status: "in-progress",
+      bookable: true,
+    });
+  });
+
+  test("mid-class it is in-progress", () => {
+    expect(classStatus(cls, new Date("2026-06-18T04:20:00Z")).status).toBe(
+      "in-progress",
+    );
+  });
+
+  test("exactly at the end it is finished and not bookable", () => {
+    expect(classStatus(cls, new Date("2026-06-18T04:50:00Z"))).toEqual({
+      status: "finished",
+      bookable: false,
+    });
+  });
+
+  test("after the end it is finished and not bookable", () => {
+    expect(classStatus(cls, new Date("2026-06-18T05:30:00Z"))).toEqual({
+      status: "finished",
+      bookable: false,
+    });
+  });
+
+  test("a class on an earlier day this week is finished", () => {
+    // now = Thursday 08:00 Vilnius; the class is on Wednesday.
+    expect(
+      classStatus(
+        { date: "2026-06-17", startTime: "07:00", endTime: "07:50" },
+        new Date("2026-06-18T05:00:00Z"),
+      ),
+    ).toEqual({ status: "finished", bookable: false });
+  });
+
+  test("a class on a later day this week is upcoming regardless of clock", () => {
+    // now = Thursday 23:00 Vilnius; the class is on Friday morning.
+    expect(
+      classStatus(
+        { date: "2026-06-19", startTime: "07:00", endTime: "07:50" },
+        new Date("2026-06-18T20:00:00Z"),
+      ),
+    ).toEqual({ status: "upcoming", bookable: true });
+  });
+
+  test("uses the Vilnius civil date, not UTC, at the day boundary", () => {
+    // 21:30Z is already 00:30 Friday in Vilnius. The Friday class is today (and
+    // still upcoming at 00:30); the Thursday class is now a past day → finished.
+    const friNow = new Date("2026-06-18T21:30:00Z");
+    expect(
+      classStatus({ date: "2026-06-19", startTime: "07:00", endTime: "07:50" }, friNow)
+        .status,
+    ).toBe("upcoming");
+    expect(classStatus(cls, friNow).status).toBe("finished");
+  });
+
+  test("falls back to the start time when the source omits the end", () => {
+    const noEnd = { date: "2026-06-18", startTime: "07:00", endTime: "" };
+    // 06:30 Vilnius (03:30Z): still upcoming.
+    expect(classStatus(noEnd, new Date("2026-06-18T03:30:00Z")).status).toBe(
+      "upcoming",
+    );
+    // 07:30 Vilnius (04:30Z): past the (start-as-end) boundary → finished.
+    expect(classStatus(noEnd, new Date("2026-06-18T04:30:00Z")).status).toBe(
+      "finished",
+    );
   });
 });

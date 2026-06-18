@@ -30,6 +30,15 @@ export interface EventDetail {
   durationMin: number | null;
 }
 
+/** The volatile free-spot counts on a class's event modal. These change minute
+ * to minute, so (ADR-0002) they are fetched LIVE per class-open and NEVER cached
+ * into the `classes` table. Any field is `null` when the modal omits it. */
+export interface Availability {
+  free: number | null;
+  registered: number | null;
+  max: number | null;
+}
+
 /** Strip HTML tags, unescape entities, and collapse whitespace in a fragment. */
 export function cleanText(fragment: string): string {
   // `&amp;` is resolved last so an escaped entity like `&amp;quot;` is not
@@ -112,5 +121,25 @@ export function parseEventDetail(html: string): EventDetail {
     kcalMin: kcal ? Number(kcal[1]) : null,
     kcalMax: kcal ? Number(kcal[2]) : null,
     durationMin: duration ? Number(duration[1]) : null,
+  };
+}
+
+/**
+ * Parse the live free-spot counts from a class's event modal (`event.php`).
+ *
+ * The modal states them inline, each number wrapped in `<b>`, e.g.
+ * `Laisvų vietų: <b>14</b>, užsiregistravusių: <b>6</b>` … `Maks. vietų sk:&nbsp; <b>20</b>`.
+ * Some modals omit one or more (e.g. the cap line) — each absent field is `null`.
+ * Ported from the reference `availability()`; `[^<]*` (like {@link parseEventDetail})
+ * absorbs the `&nbsp;`/whitespace the pool varies between the label and the `<b>`.
+ */
+export function parseAvailability(html: string): Availability {
+  const free = html.match(/Laisvų vietų:[^<]*<b>\s*(\d+)/);
+  const registered = html.match(/užsiregistravusių:[^<]*<b>\s*(\d+)/);
+  const max = html.match(/Maks\. vietų sk:[^<]*<b>\s*(\d+)/);
+  return {
+    free: free ? Number(free[1]) : null,
+    registered: registered ? Number(registered[1]) : null,
+    max: max ? Number(max[1]) : null,
   };
 }

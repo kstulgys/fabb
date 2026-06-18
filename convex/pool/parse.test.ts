@@ -4,7 +4,8 @@ import scheduleHtml from "./fixtures/schedule.html?raw";
 import eventWithCalories from "./fixtures/event-with-calories.html?raw";
 import eventNoCalories from "./fixtures/event-no-calories.html?raw";
 import eventCaloriesAlt from "./fixtures/event-calories-alt.html?raw";
-import { parseEventDetail, parseSchedule } from "./parse";
+import eventNoMax from "./fixtures/event-no-max.html?raw";
+import { parseAvailability, parseEventDetail, parseSchedule } from "./parse";
 
 describe("parseSchedule", () => {
   const classes = parseSchedule(scheduleHtml);
@@ -66,6 +67,41 @@ describe("parseEventDetail", () => {
       kcalMin: null,
       kcalMax: null,
       durationMin: 50,
+    });
+  });
+});
+
+describe("parseAvailability", () => {
+  test("parses full counts (free, registered, max)", () => {
+    expect(parseAvailability(eventWithCalories)).toEqual({
+      free: 14,
+      registered: 6,
+      max: 20,
+    });
+  });
+
+  test("absorbs the &nbsp; the pool puts before the cap's <b>", () => {
+    // event-no-calories' cap line is `Maks. vietų sk:&nbsp; <b>24</b>`.
+    expect(parseAvailability(eventNoCalories)).toEqual({
+      free: 1,
+      registered: 23,
+      max: 24,
+    });
+  });
+
+  test("returns null for a field the modal omits (no cap line)", () => {
+    expect(parseAvailability(eventNoMax)).toEqual({
+      free: 5,
+      registered: 10,
+      max: null,
+    });
+  });
+
+  test("returns all-null when the modal has no availability section", () => {
+    expect(parseAvailability("<div>nothing here</div>")).toEqual({
+      free: null,
+      registered: null,
+      max: null,
     });
   });
 });
