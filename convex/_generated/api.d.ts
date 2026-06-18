@@ -10,6 +10,7 @@
 
 import type * as auth from "../auth.js";
 import type * as classes from "../classes.js";
+import type * as crons from "../crons.js";
 import type * as http from "../http.js";
 import type * as pool_gateway from "../pool/gateway.js";
 import type * as pool_parse from "../pool/parse.js";
@@ -26,6 +27,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   classes: typeof classes;
+  crons: typeof crons;
   http: typeof http;
   "pool/gateway": typeof pool_gateway;
   "pool/parse": typeof pool_parse;
