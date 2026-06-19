@@ -1,9 +1,10 @@
 "use client";
 
-import { Center, Spinner } from "@chakra-ui/react";
+import { Center, Flex, Spinner } from "@chakra-ui/react";
 import { useConvexAuth } from "convex/react";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
+import { AppShell } from "../app-shell";
 import { AuthForm } from "../auth-form";
 
 export default function SignInPage() {
@@ -28,8 +29,10 @@ export default function SignInPage() {
   }
 
   return (
-    <Center minH="100dvh" p="4">
-      <AuthForm />
-    </Center>
+    <AppShell maxW="md">
+      <Flex justify="center" pt={{ base: "8", md: "16" }}>
+        <AuthForm />
+      </Flex>
+    </AppShell>
   );
 }
