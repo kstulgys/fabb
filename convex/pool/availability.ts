@@ -2,7 +2,7 @@ import { getAuthUserId } from "@convex-dev/auth/server";
 import { v } from "convex/values";
 import { action } from "../_generated/server";
 import { poolGateway } from "./gateway";
-import { type Availability, parseAvailability } from "./parse";
+import type { Availability } from "./parse";
 
 /**
  * The LIVE free-spot counts for one class `(pid, date)`, fetched on demand when
@@ -25,7 +25,6 @@ export const liveAvailability = action({
     if (userId === null) {
       throw new Error("Not authenticated");
     }
-    const html = await poolGateway().fetchEventHtml(pid, date);
-    return parseAvailability(html);
+    return await poolGateway().fetchAvailability(pid, date);
   },
 });

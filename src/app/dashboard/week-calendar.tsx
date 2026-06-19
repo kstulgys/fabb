@@ -81,7 +81,7 @@ function ClassRow({
  * free-spot count live (never cached).
  */
 export function WeekCalendar() {
-  const week = useQuery(api.classes.weekClasses);
+  const week = useQuery(api.classes.weekClasses, {});
   const [selected, setSelected] = useState<Doc<"classes"> | null>(null);
   // One "now" for this render drives every status marking and the open dialog.
   const now = new Date();

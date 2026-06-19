@@ -1,7 +1,8 @@
 import { v } from "convex/values";
 import { internalMutation } from "./_generated/server";
-import { fromColumns, toColumns } from "./calories";
-import { classStatus, weekDatesFor } from "./week";
+import { isHeld } from "./bookingStatus";
+import { trainingLogFromClass } from "./trainingLogs";
+import { classStatus, resolveClock, weekDatesFor } from "./week";
 
 /**
  * Attendance conversion (issue 10): the SYSTEM-context step that turns a held
@@ -40,7 +41,7 @@ import { classStatus, weekDatesFor } from "./week";
 export const convertCompletedBookings = internalMutation({
   args: { now: v.optional(v.number()) },
   handler: async (ctx, { now }): Promise<{ converted: number }> => {
-    const at = now !== undefined ? new Date(now) : new Date();
+    const at = resolveClock(now);
     const dates = weekDatesFor(at);
     const weekStart = dates[0];
     const weekEnd = dates[6];
@@ -65,7 +66,7 @@ export const convertCompletedBookings = internalMutation({
 
       for (const booking of bookings) {
         // Only a held spot is attendance; a full/error Booking never logs.
-        if (booking.status !== "registered" && booking.status !== "already") {
+        if (!isHeld(booking.status)) {
           continue;
         }
         // One log per Booking, ever — the dedupe that makes re-runs no-ops.
@@ -75,15 +76,13 @@ export const convertCompletedBookings = internalMutation({
           .unique();
         if (existing) continue;
 
-        await ctx.db.insert("trainingLogs", {
-          userId: booking.userId,
-          className: cls.name,
-          date: cls.date,
-          intensity: cls.intensity,
-          ...toColumns(fromColumns(cls)),
-          attended: true,
-          bookingId: booking._id,
-        });
+        await ctx.db.insert(
+          "trainingLogs",
+          trainingLogFromClass(cls, {
+            userId: booking.userId,
+            bookingId: booking._id,
+          }),
+        );
         converted++;
       }
     }

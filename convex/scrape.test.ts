@@ -9,6 +9,7 @@ import eventWithCalories from "./pool/fixtures/event-with-calories.html?raw";
 import scheduleHtml from "./pool/fixtures/schedule.html?raw";
 import type { PoolGateway } from "./pool/gateway";
 import { setPoolGateway } from "./pool/gateway";
+import { parseEventDetail, parseSchedule } from "./pool/parse";
 
 const modules = import.meta.glob("./**/*.ts");
 
@@ -16,11 +17,14 @@ const modules = import.meta.glob("./**/*.ts");
 // (no calories line); pid 121 has a different range; everything else uses the
 // 500-800 fixture.
 const fakeGateway: PoolGateway = {
-  fetchScheduleHtml: async () => scheduleHtml,
-  fetchEventHtml: async (pid) => {
-    if (pid === "213") return eventNoCalories;
-    if (pid === "121") return eventCalAlt;
-    return eventWithCalories;
+  fetchSchedule: async () => parseSchedule(scheduleHtml),
+  fetchEventDetail: async (pid) => {
+    if (pid === "213") return parseEventDetail(eventNoCalories);
+    if (pid === "121") return parseEventDetail(eventCalAlt);
+    return parseEventDetail(eventWithCalories);
+  },
+  fetchAvailability: async () => {
+    throw new Error("scrapeWeek must not fetch availability");
   },
   book: async () => {
     throw new Error("scrapeWeek must not book");

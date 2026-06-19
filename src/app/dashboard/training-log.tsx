@@ -188,7 +188,7 @@ function ClassPreview({ cls }: { cls: Doc<"classes"> }) {
  * the User what that will be.
  */
 function PickClassPanel({ onDone }: { onDone: () => void }) {
-  const week = useQuery(api.classes.weekClasses);
+  const week = useQuery(api.classes.weekClasses, {});
   const addFromClass = useMutation(api.trainingLogs.addFromClass);
   const [selected, setSelected] = useState("");
   const [busy, setBusy] = useState(false);

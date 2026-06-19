@@ -2,7 +2,7 @@ import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
-import { requirePair, toColumns } from "./calories";
+import { fromColumns, requirePair, toColumns } from "./calories";
 import { requireUserId } from "./users";
 
 /**
@@ -42,6 +42,33 @@ async function requireOwnedLog(
 }
 
 /**
+ * The class-derived fields of a Training log, built from a canonical `classes`
+ * row — the ONE shape written by both the manual {@link addFromClass} and the
+ * system-context Attendance conversion (`attendance.ts`). Copies name, date,
+ * intensity, and Calories from the class, marks `attended: true`, and links the
+ * originating `bookingId` when one produced the log.
+ *
+ * Calories use the TRUSTED tier ({@link fromColumns}): cached class data is
+ * never user input, so a should-never-happen lone bound coerces to null instead
+ * of throwing — the tier the conversion has always used, now shared so the
+ * manual path can no longer reject a class the cache itself stored.
+ */
+export function trainingLogFromClass(
+  cls: Pick<Doc<"classes">, "name" | "date" | "intensity" | "kcalMin" | "kcalMax">,
+  opts: { userId: Id<"users">; bookingId?: Id<"bookings"> },
+) {
+  return {
+    userId: opts.userId,
+    className: cls.name,
+    date: cls.date,
+    intensity: cls.intensity,
+    ...toColumns(fromColumns(cls)),
+    attended: true,
+    ...(opts.bookingId !== undefined ? { bookingId: opts.bookingId } : {}),
+  };
+}
+
+/**
  * Add a Training log by picking a current-week class. Name, date, intensity and
  * Calories are taken from the CANONICAL cached class (`classes`) — never from
  * client-supplied fields — so the log always reflects the real schedule. A
@@ -60,14 +87,10 @@ export const addFromClass = mutation({
       throw new Error("That class is not in this week's schedule.");
     }
 
-    return await ctx.db.insert("trainingLogs", {
-      userId,
-      className: cls.name,
-      date: cls.date,
-      intensity: cls.intensity,
-      ...toColumns(requirePair(cls.kcalMin, cls.kcalMax)),
-      attended: true,
-    });
+    return await ctx.db.insert(
+      "trainingLogs",
+      trainingLogFromClass(cls, { userId }),
+    );
   },
 });
 

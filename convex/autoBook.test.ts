@@ -4,6 +4,7 @@ import { getFunctionName } from "convex/server";
 import { afterEach, describe, expect, test } from "vitest";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import { planAttempt } from "./autoBook";
 import type { BookingStatus } from "./bookingStatus";
 import type { PoolGateway } from "./pool/gateway";
 import { setPoolGateway } from "./pool/gateway";
@@ -45,11 +46,14 @@ const bookCalls: Array<{ pid: string; date: string; poolDetails: PoolDetails }> 
   [];
 let bookResult: BookingStatus = "registered";
 const fakeGateway: PoolGateway = {
-  fetchScheduleHtml: async () => {
+  fetchSchedule: async () => {
     throw new Error("the cron must not fetch the schedule");
   },
-  fetchEventHtml: async () => {
-    throw new Error("the cron must not fetch the event modal");
+  fetchEventDetail: async () => {
+    throw new Error("the cron must not fetch event detail");
+  },
+  fetchAvailability: async () => {
+    throw new Error("the cron must not fetch availability");
   },
   book: async (pid, date, poolDetails) => {
     bookCalls.push({ pid, date, poolDetails });
@@ -412,5 +416,51 @@ describe("recentRuns — per-rule run log (owner-scoped, for the UI)", () => {
     await expect(
       t.query(api.autoBook.recentRuns, { ruleId }),
     ).rejects.toThrow("Not authenticated");
+  });
+});
+
+describe("planAttempt — verdict → plan (the pure decision table)", () => {
+  const userId = "u1" as Id<"users">;
+
+  test("cancelled → skip, with nothing to log", () => {
+    expect(planAttempt({ kind: "cancelled" })).toEqual({ action: "skip" });
+  });
+
+  test("no_details → log, carrying the owner to log against", () => {
+    expect(planAttempt({ kind: "no_details", userId })).toMatchObject({
+      action: "log",
+      userId,
+      outcome: "no_details",
+    });
+  });
+
+  test("no_match → log no_match", () => {
+    expect(planAttempt({ kind: "no_match", userId })).toMatchObject({
+      action: "log",
+      outcome: "no_match",
+    });
+  });
+
+  test("already_booked → log the 'already' outcome (no fresh booking)", () => {
+    expect(planAttempt({ kind: "already_booked", userId })).toMatchObject({
+      action: "log",
+      outcome: "already",
+    });
+  });
+
+  test("started → log 'error' as a TERMINAL plan, distinct from a booking failure", () => {
+    // The point of the resolver: `started` is a non-booking `log` plan, so its
+    // `error` never reaches the retry branch — the two senses of `error` no
+    // longer depend on switch-arm order.
+    expect(planAttempt({ kind: "started", userId })).toMatchObject({
+      action: "log",
+      outcome: "error",
+    });
+  });
+
+  test("ready → book the resolved class, passing through the booking inputs", () => {
+    expect(
+      planAttempt({ kind: "ready", userId, pid: "258", poolDetails: VALID }),
+    ).toEqual({ action: "book", userId, pid: "258", poolDetails: VALID });
   });
 });

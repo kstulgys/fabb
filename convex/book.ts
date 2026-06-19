@@ -9,6 +9,7 @@ import type { BookingStatus } from "./bookingStatus";
 import { poolGateway } from "./pool/gateway";
 import type { PoolDetails } from "./poolDetails";
 import { requirePoolDetailsForAction } from "./poolDetailsOps";
+import { resolveClock } from "./week";
 
 /**
  * The per-Booking run-log line for each outcome. Kept human and terse — this is
@@ -73,8 +74,8 @@ export async function bookAndRecord(
  *     (and never claim success on `error`).
  */
 export const bookNow = action({
-  args: { pid: v.string(), date: v.string() },
-  handler: async (ctx, { pid, date }): Promise<BookingStatus> => {
+  args: { pid: v.string(), date: v.string(), now: v.optional(v.number()) },
+  handler: async (ctx, { pid, date, now }): Promise<BookingStatus> => {
     const { userId, poolDetails } = await requirePoolDetailsForAction(ctx);
 
     const cls: Doc<"classes"> | null = await ctx.runQuery(
@@ -84,7 +85,7 @@ export const bookNow = action({
     if (cls === null) {
       throw new Error("That class is not in this week's schedule.");
     }
-    if (!manualBookable(cls, new Date())) {
+    if (!manualBookable(cls, resolveClock(now))) {
       throw new Error("This class has finished — it can no longer be booked.");
     }
 

@@ -54,6 +54,12 @@ surface speaks — the gateway classifies the pool's HTML into it, the Booking
 row stores the latest one, and the UI shows truthful feedback (never claiming
 success on `error`). An unrecognized response is `error`, never optimistically
 a success.
+Its operational meaning travels with the vocabulary, owned as predicates by the
+same module: a status is *held* (`registered`/`already` — a spot secured, the
+two the Attendance conversion counts and the UI blocks re-booking on),
+*terminal* (anything but `error` — no retry would change it, what the
+day-before cron's dedupe stops on), or *retriable* (only `error`). `full` is
+terminal but not held — the one case where the two notions diverge.
 _Avoid_: result, response code, booking state.
 
 **AutoBook outcome**:

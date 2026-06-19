@@ -34,11 +34,14 @@ const bookCalls: Array<{ pid: string; date: string; poolDetails: PoolDetails }> 
   [];
 let bookResult: BookingStatus = "registered";
 const fakeGateway: PoolGateway = {
-  fetchScheduleHtml: async () => {
+  fetchSchedule: async () => {
     throw new Error("bookNow must not fetch the schedule");
   },
-  fetchEventHtml: async () => {
-    throw new Error("bookNow must not fetch the event modal");
+  fetchEventDetail: async () => {
+    throw new Error("bookNow must not fetch event detail");
+  },
+  fetchAvailability: async () => {
+    throw new Error("bookNow must not fetch availability");
   },
   book: async (pid, date, poolDetails) => {
     bookCalls.push({ pid, date, poolDetails });
@@ -185,6 +188,53 @@ describe("bookNow (fake gateway — no network, no real booking)", () => {
         date: FUTURE_CLASS.date,
       }),
     ).rejects.toThrow("Not authenticated");
+    expect(bookCalls).toEqual([]);
+  });
+});
+
+describe("bookNow — ADR-0003 manual threshold (injectable clock)", () => {
+  // A fixed class whose status `now` decides; June Vilnius is UTC+3.
+  const CLASS = {
+    date: "2026-06-18",
+    startTime: "07:00",
+    endTime: "07:50",
+    pid: "707",
+    name: "Aqua",
+    intensity: 2,
+  };
+  const IN_PROGRESS = Date.parse("2026-06-18T04:20:00Z"); // 07:20 Vilnius — underway
+  const FINISHED = Date.parse("2026-06-18T05:00:00Z"); // 08:00 Vilnius — over
+
+  test("books a class already IN PROGRESS — a manual click may grab a started class", async () => {
+    const t = convexTest(schema, modules);
+    setPoolGateway(fakeGateway);
+    bookResult = "registered";
+    const userId = await t.run((ctx) =>
+      ctx.db.insert("users", { poolDetails: VALID, detailsComplete: true }),
+    );
+    await t.run((ctx) => ctx.db.insert("classes", CLASS));
+
+    const returned = await t
+      .withIdentity({ subject: userId })
+      .action(api.book.bookNow, { pid: CLASS.pid, date: CLASS.date, now: IN_PROGRESS });
+
+    expect(returned).toBe("registered");
+    expect(bookCalls).toHaveLength(1);
+  });
+
+  test("refuses the same class once it has FINISHED", async () => {
+    const t = convexTest(schema, modules);
+    setPoolGateway(fakeGateway);
+    const userId = await t.run((ctx) =>
+      ctx.db.insert("users", { poolDetails: VALID, detailsComplete: true }),
+    );
+    await t.run((ctx) => ctx.db.insert("classes", CLASS));
+
+    await expect(
+      t
+        .withIdentity({ subject: userId })
+        .action(api.book.bookNow, { pid: CLASS.pid, date: CLASS.date, now: FINISHED }),
+    ).rejects.toThrow(/finished/i);
     expect(bookCalls).toEqual([]);
   });
 });

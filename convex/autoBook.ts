@@ -7,10 +7,10 @@ import {
   query,
 } from "./_generated/server";
 import { autoBookable } from "./bookingDecision";
-import { attemptOutcomeValidator } from "./bookingStatus";
+import { type AttemptOutcome, attemptOutcomeValidator, isTerminal } from "./bookingStatus";
 import { hasCompleteDetails, type PoolDetails } from "./poolDetails";
 import { requireUserId } from "./users";
-import { isoWeekday, tomorrowDate } from "./week";
+import { isoWeekday, resolveClock, tomorrowDate } from "./week";
 
 /**
  * The day-before AutoBook cron and its supporting reads/writes (issue 08).
@@ -48,6 +48,87 @@ export type RuleContextResult =
       poolDetails: PoolDetails;
     };
 
+/** Run-log messages for the AutoBook verdicts that book NOTHING — paired with
+ * their outcome by {@link planAttempt}. (The booking verdicts' messages live in
+ * `OUTCOME_MESSAGE` in `book.ts`, keyed by the pool's response.) */
+const NO_MATCH_MESSAGE =
+  "No single matching class for tomorrow — nothing booked.";
+const NO_DETAILS_MESSAGE =
+  "Pool details incomplete — cannot book until they are filled in.";
+const ALREADY_BOOKED_MESSAGE =
+  "Already booked for this class — no second attempt.";
+const STARTED_MESSAGE = "Class already started — gave up.";
+
+/**
+ * What the attempt action does with a resolved {@link RuleContextResult}: `skip`
+ * it (the rule is gone — nothing to log against), `log` a terminal non-booking
+ * outcome, or `book` the resolved class. Only `book` contacts the pool; its
+ * status, message, and retry are decided AFTER the booking (an effect). Every
+ * decision that does NOT touch the pool is concentrated here.
+ */
+export type AttemptPlan =
+  | { action: "skip" }
+  | {
+      action: "log";
+      userId: Id<"users">;
+      outcome: AttemptOutcome;
+      message: string;
+    }
+  | {
+      action: "book";
+      userId: Id<"users">;
+      pid: string;
+      poolDetails: PoolDetails;
+    };
+
+/**
+ * Interpret a verdict into an {@link AttemptPlan} — the decision table that used
+ * to be smeared across `attemptRule`'s switch and the message constants. The
+ * five non-booking verdicts each map to a fixed outcome + run-log message and
+ * never retry; `ready` becomes the one `book` plan. Pure: no booking, no DB.
+ */
+export function planAttempt(verdict: RuleContextResult): AttemptPlan {
+  switch (verdict.kind) {
+    case "cancelled":
+      return { action: "skip" };
+    case "no_details":
+      return {
+        action: "log",
+        userId: verdict.userId,
+        outcome: "no_details",
+        message: NO_DETAILS_MESSAGE,
+      };
+    case "no_match":
+      return {
+        action: "log",
+        userId: verdict.userId,
+        outcome: "no_match",
+        message: NO_MATCH_MESSAGE,
+      };
+    case "already_booked":
+      return {
+        action: "log",
+        userId: verdict.userId,
+        outcome: "already",
+        message: ALREADY_BOOKED_MESSAGE,
+      };
+    case "started":
+      return {
+        action: "log",
+        userId: verdict.userId,
+        outcome: "error",
+        message: STARTED_MESSAGE,
+      };
+    case "ready":
+      return {
+        action: "book",
+        userId: verdict.userId,
+        pid: verdict.pid,
+        poolDetails: verdict.poolDetails,
+      };
+  }
+}
+
 /**
  * The day-before cron entry. For TOMORROW's date (Europe/Vilnius) it finds every
  * ENABLED rule whose weekday matches tomorrow's ISO weekday and schedules one
@@ -61,7 +142,7 @@ export const runDayBefore = internalMutation({
     ctx,
     { now },
   ): Promise<{ date: string; weekday: number; scheduled: number }> => {
-    const date = tomorrowDate(now !== undefined ? new Date(now) : new Date());
+    const date = tomorrowDate(resolveClock(now));
     const weekday = isoWeekday(date);
 
     const rules = await ctx.db
@@ -128,13 +209,13 @@ export const ruleContext = internalQuery({
         q.eq("userId", userId).eq("pid", cls.pid).eq("date", date),
       )
       .unique();
-    if (existing && existing.status !== "error") {
+    if (existing && isTerminal(existing.status)) {
       return { kind: "already_booked", userId };
     }
 
     // Stop once the start time has passed (issue 08 retry-stop). For tomorrow's
     // class at fire time this is always `upcoming`; it only bites on a late retry.
-    const at = now !== undefined ? new Date(now) : new Date();
+    const at = resolveClock(now);
     if (!autoBookable(cls, at)) return { kind: "started", userId };
 
     return { kind: "ready", userId, pid: cls.pid, poolDetails: owner.poolDetails };

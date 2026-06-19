@@ -10,7 +10,7 @@ import {
   weeklySeries,
 } from "./statsHelpers";
 import { requireUserId } from "./users";
-import { todayDate } from "./week";
+import { resolveClock, todayDate } from "./week";
 
 /**
  * Stats dashboard aggregation (issue 11): the calling User's progress over
@@ -70,7 +70,7 @@ export const summary = query({
       .take(STATS_LIMIT);
     const attended = rows.filter((row) => row.attended);
 
-    const today = todayDate(now !== undefined ? new Date(now) : new Date());
+    const today = todayDate(resolveClock(now));
 
     return {
       period,

@@ -2,7 +2,7 @@ import { type Infer, v } from "convex/values";
 import { internalMutation, query } from "./_generated/server";
 import { caloriesColumns } from "./calories";
 import { requireUserId } from "./users";
-import { WEEKDAY_LABELS, weekDatesFor } from "./week";
+import { WEEKDAY_LABELS, resolveClock, weekDatesFor } from "./week";
 
 /**
  * One scraped class row. Calories/duration are optional because the pool omits
@@ -55,11 +55,11 @@ export const upsertClasses = internalMutation({
  * signed-out callers but does not partition the data per User.
  */
 export const weekClasses = query({
-  args: {},
-  handler: async (ctx) => {
+  args: { now: v.optional(v.number()) },
+  handler: async (ctx, { now }) => {
     await requireUserId(ctx);
 
-    const dates = weekDatesFor(new Date());
+    const dates = weekDatesFor(resolveClock(now));
     const weekStart = dates[0];
     const weekEnd = dates[6];
 

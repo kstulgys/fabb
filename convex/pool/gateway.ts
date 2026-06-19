@@ -1,7 +1,10 @@
 /**
  * The pool I/O boundary. Every network call to the Fabijoniškės pool goes
  * through a {@link PoolGateway}; nothing else in the app calls `fetch` against
- * the pool directly. Parsing the returned HTML is `parse.ts`'s job.
+ * the pool directly, and every method returns a parsed domain value — a class
+ * list, event detail, availability, or a classified {@link BookingStatus} — so
+ * callers never touch the pool's HTML. The HTML→data step is `parse.ts`'s,
+ * invoked here behind the seam (as `book` already classifies its own response).
  *
  * The pool is behind Cloudflare, whose bot challenge 403s the Convex
  * deployment's datacenter IP for the schedule + booking endpoints. So when
@@ -17,13 +20,26 @@
 
 import type { BookingStatus } from "../bookingStatus";
 import type { PoolDetails } from "../poolDetails";
-import { parseBookingResult } from "./parse";
+import {
+  type Availability,
+  type EventDetail,
+  type ScheduleClass,
+  parseAvailability,
+  parseBookingResult,
+  parseEventDetail,
+  parseSchedule,
+} from "./parse";
 
 export interface PoolGateway {
-  /** GET the group-class schedule page (the whole current Mon–Sun week). */
-  fetchScheduleHtml(): Promise<string>;
-  /** GET one class's event modal for `(pid, date)`. */
-  fetchEventHtml(pid: string, date: string): Promise<string>;
+  /** The current Mon–Sun week's classes, parsed from the schedule page. */
+  fetchSchedule(): Promise<ScheduleClass[]>;
+  /** The stable event-modal fields (Calories, duration) for `(pid, date)`. */
+  fetchEventDetail(pid: string, date: string): Promise<EventDetail>;
+  /**
+   * The volatile free-spot counts for `(pid, date)`. Fetched live per
+   * class-open and never cached (ADR-0002).
+   */
+  fetchAvailability(pid: string, date: string): Promise<Availability>;
   /**
    * Perform the pool's four-step booking for `(pid, date)` using the User's
    * {@link PoolDetails}, returning the classified {@link BookingStatus}. The
@@ -137,28 +153,41 @@ function cookieHeader(jar: Map<string, string>): string {
   return Array.from(jar, ([name, value]) => `${name}=${value}`).join("; ");
 }
 
+/**
+ * GET one class's event-modal HTML for `(pid, date)`. The two read methods that
+ * parse it — {@link PoolGateway.fetchEventDetail} (stable fields) and
+ * {@link PoolGateway.fetchAvailability} (live spots) — share this one request.
+ */
+async function fetchEventModalHtml(pid: string, date: string): Promise<string> {
+  const url = `${EVENT_URL}?pid=${encodeURIComponent(pid)}&date=${encodeURIComponent(date)}`;
+  const res = await poolFetch(url, {
+    headers: { "User-Agent": USER_AGENT, Referer: REGISTRACIJA_URL },
+  });
+  if (!res.ok) {
+    throw new Error(
+      `Pool event fetch failed for pid=${pid} date=${date}: HTTP ${res.status}`,
+    );
+  }
+  return await res.text();
+}
+
 export const realPoolGateway: PoolGateway = {
-  async fetchScheduleHtml() {
+  async fetchSchedule() {
     const res = await poolFetch(SCHEDULE_URL, {
       headers: { "User-Agent": USER_AGENT },
     });
     if (!res.ok) {
       throw new Error(`Pool schedule fetch failed: HTTP ${res.status}`);
     }
-    return await res.text();
+    return parseSchedule(await res.text());
   },
 
-  async fetchEventHtml(pid, date) {
-    const url = `${EVENT_URL}?pid=${encodeURIComponent(pid)}&date=${encodeURIComponent(date)}`;
-    const res = await poolFetch(url, {
-      headers: { "User-Agent": USER_AGENT, Referer: REGISTRACIJA_URL },
-    });
-    if (!res.ok) {
-      throw new Error(
-        `Pool event fetch failed for pid=${pid} date=${date}: HTTP ${res.status}`,
-      );
-    }
-    return await res.text();
+  async fetchEventDetail(pid, date) {
+    return parseEventDetail(await fetchEventModalHtml(pid, date));
+  },
+
+  async fetchAvailability(pid, date) {
+    return parseAvailability(await fetchEventModalHtml(pid, date));
   },
 
   async book(pid, date, poolDetails) {

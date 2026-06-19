@@ -10,6 +10,10 @@ import { type Infer, v } from "convex/values";
  * parsers, and the server modules. Server-free (imports only `convex/values`)
  * so `schema.ts`, the pool parsers, and the server modules (`bookings`,
  * `autoBook`) all import it without pulling in `_generated/server`.
+ *
+ * Beyond the vocabulary, this module owns its operational MEANING — the held /
+ * terminal / retriable polarity each booking surface used to re-derive inline
+ * ({@link isHeld}, {@link isTerminal}, {@link isRetriable}).
  */
 
 /**
@@ -46,3 +50,32 @@ export const attemptOutcomeValidator = v.union(
 /** The static twin of {@link attemptOutcomeValidator} (CONTEXT.md: AutoBook
  * outcome). */
 export type AttemptOutcome = Infer<typeof attemptOutcomeValidator>;
+
+/**
+ * Whether a Booking status is a HELD spot — the pool confirmed a reservation
+ * (`registered`) or the User was already on the list (`already`). The two
+ * statuses the Attendance conversion counts as attendance and the UI blocks
+ * re-booking on; a `full` or `error` Booking holds nothing.
+ */
+export function isHeld(status: BookingStatus): boolean {
+  return status === "registered" || status === "already";
+}
+
+/**
+ * Whether a Booking status is TERMINAL — the attempt reached a definitive
+ * verdict, so a retry would change nothing: a held spot (`registered`/`already`)
+ * or a `full` class. Only a transient `error` is non-terminal. The day-before
+ * cron's dedupe blocks a second Booking on any terminal status.
+ */
+export function isTerminal(status: BookingStatus): boolean {
+  return status !== "error";
+}
+
+/**
+ * Whether an AutoBook attempt that produced `status` should be retried: only a
+ * transient `error` (the booking never went through), never a terminal verdict
+ * — the exact complement of {@link isTerminal}.
+ */
+export function isRetriable(status: BookingStatus): boolean {
+  return !isTerminal(status);
+}

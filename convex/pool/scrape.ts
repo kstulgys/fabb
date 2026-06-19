@@ -2,7 +2,6 @@ import { internal } from "../_generated/api";
 import { internalAction } from "../_generated/server";
 import type { ClassRecord } from "../classes";
 import { poolGateway } from "./gateway";
-import { parseEventDetail, parseSchedule } from "./parse";
 
 /**
  * Scrape the current week's schedule and upsert the stable fields into the
@@ -10,22 +9,20 @@ import { parseEventDetail, parseSchedule } from "./parse";
  * `npx convex run pool/scrape:scrapeWeek`); a later slice schedules it hourly
  * (ADR-0002).
  *
- * The flow: GET the schedule → {@link parseSchedule} → for each class GET its
- * event modal → {@link parseEventDetail} → one idempotent
- * {@link internal.classes.upsertClasses}. All network I/O goes through the
- * active {@link poolGateway}, which tests replace with a fixture-backed fake.
+ * The flow: {@link poolGateway} returns the week's parsed classes → for each,
+ * its parsed event detail → one idempotent {@link internal.classes.upsertClasses}.
+ * The gateway returns domain values (HTML parsing lives behind it); tests
+ * replace it with a fixture-backed fake.
  */
 export const scrapeWeek = internalAction({
   args: {},
   handler: async (ctx): Promise<{ upserted: number }> => {
     const gateway = poolGateway();
-    const classes = parseSchedule(await gateway.fetchScheduleHtml());
+    const classes = await gateway.fetchSchedule();
 
     const rows: ClassRecord[] = [];
     for (const cls of classes) {
-      const detail = parseEventDetail(
-        await gateway.fetchEventHtml(cls.pid, cls.date),
-      );
+      const detail = await gateway.fetchEventDetail(cls.pid, cls.date);
       rows.push({
         date: cls.date,
         startTime: cls.startTime,

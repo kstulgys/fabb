@@ -16,7 +16,7 @@ import { useAction, useMutation, useQuery } from "convex/react";
 import { useEffect, useState } from "react";
 import { api } from "../../../convex/_generated/api";
 import type { Doc } from "../../../convex/_generated/dataModel";
-import type { BookingStatus } from "../../../convex/bookingStatus";
+import { type BookingStatus, isHeld } from "../../../convex/bookingStatus";
 import { format, fromColumns } from "../../../convex/calories";
 import type { Availability } from "../../../convex/pool/parse";
 import {
@@ -199,9 +199,7 @@ function BookNow({ cls }: { cls: Doc<"classes"> }) {
       : state.kind === "failed"
         ? { palette: "red", text: state.message }
         : null;
-  const held =
-    state.kind === "done" &&
-    (state.status === "registered" || state.status === "already");
+  const held = state.kind === "done" && isHeld(state.status);
 
   return (
     <Stack gap="2" align="flex-start" flex="1">

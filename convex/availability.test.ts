@@ -2,24 +2,27 @@
 import { convexTest } from "convex-test";
 import { afterEach, expect, test } from "vitest";
 import { api } from "./_generated/api";
-import eventNoMax from "./pool/fixtures/event-no-max.html?raw";
-import eventWithCalories from "./pool/fixtures/event-with-calories.html?raw";
 import type { PoolGateway } from "./pool/gateway";
 import { setPoolGateway } from "./pool/gateway";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
 
-// Fixture-backed gateway: never touches the network. It records the (pid,date)
+// Fake gateway: never touches the network. It records the (pid,date)
 // it was asked for so we can prove the action fetches live, per class.
 const calls: Array<{ pid: string; date: string }> = [];
 const fakeGateway: PoolGateway = {
-  fetchScheduleHtml: async () => {
+  fetchSchedule: async () => {
     throw new Error("liveAvailability must not fetch the schedule");
   },
-  fetchEventHtml: async (pid, date) => {
+  fetchEventDetail: async () => {
+    throw new Error("liveAvailability must not fetch event detail");
+  },
+  fetchAvailability: async (pid, date) => {
     calls.push({ pid, date });
-    return pid === "999" ? eventNoMax : eventWithCalories;
+    return pid === "999"
+      ? { free: 5, registered: 10, max: null }
+      : { free: 14, registered: 6, max: 20 };
   },
   book: async () => {
     throw new Error("liveAvailability must not book");

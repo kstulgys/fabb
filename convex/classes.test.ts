@@ -3,19 +3,18 @@ import { convexTest } from "convex-test";
 import { describe, expect, test } from "vitest";
 import { api, internal } from "./_generated/api";
 import schema from "./schema";
-import { weekDatesFor } from "./week";
 
 const modules = import.meta.glob("./**/*.ts");
 
 describe("weekClasses", () => {
   test("returns the current Vilnius week grouped by day, time-sorted, excluding other weeks", async () => {
     const t = convexTest(schema, modules);
-    const dates = weekDatesFor(new Date());
-    const monday = dates[0];
-    const wednesday = dates[2];
-    const lastWeek = new Date(Date.parse(`${monday}T00:00:00Z`) - 7 * 86_400_000)
-      .toISOString()
-      .slice(0, 10);
+    // Pinned to the canonical Thursday (2026-06-18); its Vilnius week is
+    // 2026-06-15 … 06-21. Passing `now` makes the window deterministic.
+    const now = Date.parse("2026-06-18T10:00:00Z");
+    const monday = "2026-06-15";
+    const wednesday = "2026-06-17";
+    const lastWeek = "2026-06-08";
 
     const userId = await t.run(async (ctx) => {
       // Two Monday classes inserted out of time order (proves sorting).
@@ -41,10 +40,10 @@ describe("weekClasses", () => {
 
     const week = await t
       .withIdentity({ subject: userId })
-      .query(api.classes.weekClasses, {});
+      .query(api.classes.weekClasses, { now });
 
     expect(week.weekStart).toBe(monday);
-    expect(week.weekEnd).toBe(dates[6]);
+    expect(week.weekEnd).toBe("2026-06-21");
     expect(week.days).toHaveLength(7);
     expect(week.days[0].weekday).toBe("Monday");
     // Monday's two classes come back sorted by start time.

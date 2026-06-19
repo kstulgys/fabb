@@ -99,6 +99,17 @@ export function todayDate(now: Date): string {
   return vilniusDate.format(now);
 }
 
+/**
+ * The clock for a time-dependent entry point: the injected test instant (`now`,
+ * epoch ms) when given, else the server's real clock. The one place the
+ * `now?: number` test seam — threaded through the cron entries, the booking
+ * gate, and the stats query — becomes a `Date`, so every such surface freezes
+ * time the same way and none re-spells the coercion.
+ */
+export function resolveClock(now?: number): Date {
+  return now !== undefined ? new Date(now) : new Date();
+}
+
 /** The Monday-first label for an ISO-8601 weekday (Monday=1 … Sunday=7), i.e.
  * the inverse of {@link isoWeekday} for display. Centralises the 1-based →
  * 0-indexed {@link WEEKDAY_LABELS} offset. */

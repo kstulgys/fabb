@@ -111,6 +111,26 @@ describe("addFromClass — pick a current-week class", () => {
     expect(logs[0].attended).toBe(true);
   });
 
+  test("tolerates a cached class with a lone Calorie bound (trusted tier)", async () => {
+    const t = convexTest(schema, modules);
+    const userId = await seedUser(t);
+    // A should-never-happen cache state: a min with no max. The trusted tier
+    // coerces it to null instead of throwing the user-input "enter both" error
+    // at a User who typed nothing — the class came from the cache.
+    await seedClass(t, { pid: "303", kcalMin: 500, kcalMax: undefined });
+    const asUser = t.withIdentity({ subject: userId });
+
+    await asUser.mutation(api.trainingLogs.addFromClass, {
+      pid: "303",
+      date: "2026-06-18",
+    });
+
+    const logs = await asUser.query(api.trainingLogs.listMine, {});
+    expect(logs[0].kcalMin).toBeUndefined();
+    expect(logs[0].kcalMax).toBeUndefined();
+    expect(logs[0].attended).toBe(true);
+  });
+
   test("throws when the class is not in the cached schedule", async () => {
     const t = convexTest(schema, modules);
     const userId = await seedUser(t);
