@@ -46,7 +46,7 @@ function Dashboard() {
         {user && !user.detailsComplete ? (
           <PoolDetailsForm
             heading="Complete your pool details"
-            description="We submit these four fields to the pool on every booking. You can edit them later in settings."
+            description="We submit your name, surname, and phone to the pool on every booking, along with your account email. You can edit them later in settings."
             submitLabel="Save and continue"
           />
         ) : (

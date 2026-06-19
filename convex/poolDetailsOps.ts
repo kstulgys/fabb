@@ -4,10 +4,12 @@ import type { Id } from "./_generated/dataModel";
 import type { ActionCtx, MutationCtx, QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
 import {
+  ACCOUNT_EMAIL_MISSING_MESSAGE,
+  EMAIL_RE,
   POOL_DETAILS_INCOMPLETE_MESSAGE,
   type PoolDetails,
   hasCompleteDetails,
-  poolDetailsValidator,
+  poolDetailsInputValidator,
   validatePoolDetails,
 } from "./poolDetails";
 import { requireUserId } from "./users";
@@ -57,20 +59,30 @@ export type MyPoolDetails = {
  * Set or overwrite the calling User's Pool details. The single entry point for
  * both onboarding and the settings screen — a later edit just overwrites.
  *
- * Validates server-side (email shape + `+370` phone form); invalid input is
- * rejected with a clear message. On success all four fields are present and
- * valid, so `detailsComplete` is set to `true`.
+ * The User enters only name, surname, and phone; the booking email is NOT asked
+ * for — it is the account/signup email (`users.email`), stamped here server-side
+ * so it always matches the account. Validates the three fields (`+370` phone
+ * form) and requires the account to have a usable email; invalid input is
+ * rejected with a clear message. On success all four stored fields are present
+ * and valid, so `detailsComplete` is set to `true`.
  */
 export const setPoolDetails = mutation({
-  args: poolDetailsValidator.fields,
+  args: poolDetailsInputValidator.fields,
   handler: async (ctx, args): Promise<null> => {
     const userId = await requireUserId(ctx);
     const result = validatePoolDetails(args);
     if (!result.ok) {
       throw new Error(result.error);
     }
+    // The booking email is the account/signup email, never re-typed in the
+    // form — derive it from the User doc and require it to be usable.
+    const user = await ctx.db.get("users", userId);
+    const email = user?.email?.trim() ?? "";
+    if (!EMAIL_RE.test(email)) {
+      throw new Error(ACCOUNT_EMAIL_MISSING_MESSAGE);
+    }
     await ctx.db.patch("users", userId, {
-      poolDetails: result.value,
+      poolDetails: { ...result.value, email },
       detailsComplete: true,
     });
     return null;

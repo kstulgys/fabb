@@ -23,7 +23,7 @@ function Settings() {
 
         <PoolDetailsForm
           heading="Pool details"
-          description="These four fields are submitted to the pool on every booking — the pool keys your bookings off the email."
+          description="Your name, surname, and phone are submitted to the pool on every booking, along with your account email — the pool keys your bookings off that email."
           submitLabel="Save details"
         />
       </Stack>

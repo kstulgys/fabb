@@ -2,40 +2,49 @@
 import { convexTest } from "convex-test";
 import { describe, expect, test } from "vitest";
 import { api } from "./_generated/api";
-import { POOL_DETAILS_INCOMPLETE_MESSAGE, validatePoolDetails } from "./poolDetails";
+import {
+  ACCOUNT_EMAIL_MISSING_MESSAGE,
+  POOL_DETAILS_INCOMPLETE_MESSAGE,
+  validatePoolDetails,
+} from "./poolDetails";
 import schema from "./schema";
 import { requirePoolDetails, requirePoolDetailsForAction } from "./poolDetailsOps";
 
 const modules = import.meta.glob("./**/*.ts");
 
-const VALID = {
-  name: "Jonas",
-  surname: "Jonaitis",
-  phone: "+37061234567",
-  email: "jonas@example.com",
-};
+// The booking email is the User's account/signup email, never typed in the form.
+const ACCOUNT_EMAIL = "jonas@example.com";
+// What the form sends to setPoolDetails: the three user-entered fields.
+const INPUT = { name: "Jonas", surname: "Jonaitis", phone: "+37061234567" };
+// What gets stored: the three input fields plus the stamped account email.
+const STORED = { ...INPUT, email: ACCOUNT_EMAIL };
 
 describe("setPoolDetails + myPoolDetails", () => {
-  test("valid details flip detailsComplete and are readable by the owner", async () => {
+  test("valid details flip detailsComplete and stamp the account email", async () => {
     const t = convexTest(schema, modules);
-    const userId = await t.run((ctx) => ctx.db.insert("users", {}));
+    const userId = await t.run((ctx) =>
+      ctx.db.insert("users", { email: ACCOUNT_EMAIL }),
+    );
     const asUser = t.withIdentity({ subject: userId });
 
-    await asUser.mutation(api.poolDetailsOps.setPoolDetails, VALID);
+    await asUser.mutation(api.poolDetailsOps.setPoolDetails, INPUT);
 
     const mine = await asUser.query(api.poolDetailsOps.myPoolDetails, {});
     expect(mine.detailsComplete).toBe(true);
-    expect(mine.poolDetails).toEqual(VALID);
+    // The stored email is the account email — never asked for in the form.
+    expect(mine.poolDetails).toEqual(STORED);
   });
 
-  test("a later edit overwrites the earlier values (settings re-save)", async () => {
+  test("a later edit overwrites the earlier values, email stays the account one", async () => {
     const t = convexTest(schema, modules);
-    const userId = await t.run((ctx) => ctx.db.insert("users", {}));
+    const userId = await t.run((ctx) =>
+      ctx.db.insert("users", { email: ACCOUNT_EMAIL }),
+    );
     const asUser = t.withIdentity({ subject: userId });
 
-    await asUser.mutation(api.poolDetailsOps.setPoolDetails, VALID);
+    await asUser.mutation(api.poolDetailsOps.setPoolDetails, INPUT);
     await asUser.mutation(api.poolDetailsOps.setPoolDetails, {
-      ...VALID,
+      ...INPUT,
       surname: "Petraitis",
       phone: "+37060000000",
     });
@@ -43,16 +52,17 @@ describe("setPoolDetails + myPoolDetails", () => {
     const mine = await asUser.query(api.poolDetailsOps.myPoolDetails, {});
     expect(mine.poolDetails?.surname).toBe("Petraitis");
     expect(mine.poolDetails?.phone).toBe("+37060000000");
+    expect(mine.poolDetails?.email).toBe(ACCOUNT_EMAIL);
   });
 
-  test("an invalid email is rejected and nothing is persisted", async () => {
+  test("an account with no email cannot complete details", async () => {
     const t = convexTest(schema, modules);
     const userId = await t.run((ctx) => ctx.db.insert("users", {}));
     const asUser = t.withIdentity({ subject: userId });
 
     await expect(
-      asUser.mutation(api.poolDetailsOps.setPoolDetails, { ...VALID, email: "not-an-email" }),
-    ).rejects.toThrow(/valid email/i);
+      asUser.mutation(api.poolDetailsOps.setPoolDetails, INPUT),
+    ).rejects.toThrow(ACCOUNT_EMAIL_MISSING_MESSAGE);
 
     const mine = await asUser.query(api.poolDetailsOps.myPoolDetails, {});
     expect(mine.detailsComplete).toBe(false);
@@ -61,19 +71,24 @@ describe("setPoolDetails + myPoolDetails", () => {
 
   test("a phone that is not +370… is rejected", async () => {
     const t = convexTest(schema, modules);
-    const userId = await t.run((ctx) => ctx.db.insert("users", {}));
+    const userId = await t.run((ctx) =>
+      ctx.db.insert("users", { email: ACCOUNT_EMAIL }),
+    );
     const asUser = t.withIdentity({ subject: userId });
 
     await expect(
-      asUser.mutation(api.poolDetailsOps.setPoolDetails, { ...VALID, phone: "861234567" }),
+      asUser.mutation(api.poolDetailsOps.setPoolDetails, {
+        ...INPUT,
+        phone: "861234567",
+      }),
     ).rejects.toThrow(/\+370/);
   });
 
   test("an unauthenticated caller cannot set or read details", async () => {
     const t = convexTest(schema, modules);
-    await expect(t.mutation(api.poolDetailsOps.setPoolDetails, VALID)).rejects.toThrow(
-      "Not authenticated",
-    );
+    await expect(
+      t.mutation(api.poolDetailsOps.setPoolDetails, INPUT),
+    ).rejects.toThrow("Not authenticated");
     await expect(t.query(api.poolDetailsOps.myPoolDetails, {})).rejects.toThrow(
       "Not authenticated",
     );
@@ -83,18 +98,22 @@ describe("setPoolDetails + myPoolDetails", () => {
 describe("requirePoolDetails — booking gate (query/mutation ctx)", () => {
   test("passes and returns the details when complete", async () => {
     const t = convexTest(schema, modules);
-    const userId = await t.run((ctx) => ctx.db.insert("users", {}));
+    const userId = await t.run((ctx) =>
+      ctx.db.insert("users", { email: ACCOUNT_EMAIL }),
+    );
     const asUser = t.withIdentity({ subject: userId });
-    await asUser.mutation(api.poolDetailsOps.setPoolDetails, VALID);
+    await asUser.mutation(api.poolDetailsOps.setPoolDetails, INPUT);
 
     const gated = await asUser.query((ctx) => requirePoolDetails(ctx));
     expect(gated.userId).toBe(userId);
-    expect(gated.poolDetails).toEqual(VALID);
+    expect(gated.poolDetails).toEqual(STORED);
   });
 
   test("refuses with the complete-your-details signal when incomplete", async () => {
     const t = convexTest(schema, modules);
-    const userId = await t.run((ctx) => ctx.db.insert("users", {}));
+    const userId = await t.run((ctx) =>
+      ctx.db.insert("users", { email: ACCOUNT_EMAIL }),
+    );
     const asUser = t.withIdentity({ subject: userId });
 
     await expect(asUser.query((ctx) => requirePoolDetails(ctx))).rejects.toThrow(
@@ -106,18 +125,22 @@ describe("requirePoolDetails — booking gate (query/mutation ctx)", () => {
 describe("requirePoolDetailsForAction — booking gate (action ctx)", () => {
   test("passes and returns the details when complete", async () => {
     const t = convexTest(schema, modules);
-    const userId = await t.run((ctx) => ctx.db.insert("users", {}));
+    const userId = await t.run((ctx) =>
+      ctx.db.insert("users", { email: ACCOUNT_EMAIL }),
+    );
     const asUser = t.withIdentity({ subject: userId });
-    await asUser.mutation(api.poolDetailsOps.setPoolDetails, VALID);
+    await asUser.mutation(api.poolDetailsOps.setPoolDetails, INPUT);
 
     const gated = await asUser.action((ctx) => requirePoolDetailsForAction(ctx));
     expect(gated.userId).toBe(userId);
-    expect(gated.poolDetails).toEqual(VALID);
+    expect(gated.poolDetails).toEqual(STORED);
   });
 
   test("refuses with the complete-your-details signal when incomplete", async () => {
     const t = convexTest(schema, modules);
-    const userId = await t.run((ctx) => ctx.db.insert("users", {}));
+    const userId = await t.run((ctx) =>
+      ctx.db.insert("users", { email: ACCOUNT_EMAIL }),
+    );
     const asUser = t.withIdentity({ subject: userId });
 
     await expect(
@@ -141,7 +164,9 @@ test("a second User cannot read the first User's Pool details (isolation)", asyn
     return { userA, userB };
   });
 
-  await t.withIdentity({ subject: userA }).mutation(api.poolDetailsOps.setPoolDetails, VALID);
+  await t
+    .withIdentity({ subject: userA })
+    .mutation(api.poolDetailsOps.setPoolDetails, INPUT);
 
   // B's own details view never contains A's PII.
   const bDetails = await t
@@ -157,22 +182,21 @@ test("a second User cannot read the first User's Pool details (isolation)", asyn
   expect(bUser?.poolDetails).toBeUndefined();
   expect(bUser?.email).toBe("b@example.com");
 
-  // Sanity: A still reads their own.
+  // Sanity: A reads their own — stamped with A's account email, not B's.
   const aDetails = await t
     .withIdentity({ subject: userA })
     .query(api.poolDetailsOps.myPoolDetails, {});
-  expect(aDetails.poolDetails).toEqual(VALID);
+  expect(aDetails.poolDetails).toEqual({ ...INPUT, email: "a@example.com" });
 });
 
 describe("validatePoolDetails (pure)", () => {
-  test("accepts and trims valid input", () => {
+  test("accepts and trims the three input fields", () => {
     const r = validatePoolDetails({
       name: " Jonas ",
       surname: " Jonaitis ",
       phone: " +37061234567 ",
-      email: " jonas@example.com ",
     });
-    expect(r).toEqual({ ok: true, value: VALID });
+    expect(r).toEqual({ ok: true, value: INPUT });
   });
 
   test.each([
@@ -181,23 +205,13 @@ describe("validatePoolDetails (pure)", () => {
     "+370612345678", // too long
     "+37061234abc", // non-digits
   ])("rejects phone %s", (phone) => {
-    const r = validatePoolDetails({ ...VALID, phone });
+    const r = validatePoolDetails({ ...INPUT, phone });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.field).toBe("phone");
   });
 
-  test.each([
-    "plain",
-    "a@b", // no dot in domain
-    "a b@c.com", // whitespace
-  ])("rejects email %s", (email) => {
-    const r = validatePoolDetails({ ...VALID, email });
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.field).toBe("email");
-  });
-
   test("flags an empty name or surname", () => {
-    expect(validatePoolDetails({ ...VALID, name: "  " }).ok).toBe(false);
-    expect(validatePoolDetails({ ...VALID, surname: "" }).ok).toBe(false);
+    expect(validatePoolDetails({ ...INPUT, name: "  " }).ok).toBe(false);
+    expect(validatePoolDetails({ ...INPUT, surname: "" }).ok).toBe(false);
   });
 });

@@ -4,12 +4,12 @@ import { Box, Button, chakra, Heading, Input, Stack, Text } from "@chakra-ui/rea
 import { useMutation, useQuery } from "convex/react";
 import { useEffect, useState } from "react";
 import { api } from "../../convex/_generated/api";
-import { type PoolDetails, validatePoolDetails } from "../../convex/poolDetails";
+import { type PoolDetailsInput, validatePoolDetails } from "../../convex/poolDetails";
 
-const EMPTY: PoolDetails = { name: "", surname: "", phone: "", email: "" };
+const EMPTY: PoolDetailsInput = { name: "", surname: "", phone: "" };
 
 const FIELDS: ReadonlyArray<{
-  key: keyof PoolDetails;
+  key: keyof PoolDetailsInput;
   label: string;
   type: string;
   autoComplete: string;
@@ -24,14 +24,17 @@ const FIELDS: ReadonlyArray<{
     autoComplete: "tel",
     placeholder: "+37061234567",
   },
-  { key: "email", label: "Email", type: "email", autoComplete: "email" },
 ];
 
 /**
- * The four-field Pool details form, shared by onboarding (on the dashboard, when
- * details are incomplete) and the settings screen (editing later). It prefills
- * from {@link api.poolDetailsOps.myPoolDetails} and saves via
- * {@link api.poolDetailsOps.setPoolDetails}.
+ * The Pool details form (name, surname, phone), shared by onboarding (on the
+ * dashboard, when details are incomplete) and the settings screen (editing
+ * later). It prefills from {@link api.poolDetailsOps.myPoolDetails} and saves
+ * via {@link api.poolDetailsOps.setPoolDetails}.
+ *
+ * The booking email is NOT asked for — it is the User's account/signup email,
+ * shown read-only and stamped server-side on save, so it always matches the
+ * account.
  *
  * Validation uses the exact same pure {@link validatePoolDetails} the mutation
  * runs server-side, so the inline message matches the server's rejection; the
@@ -50,9 +53,10 @@ export function PoolDetailsForm({
 }) {
   const existing = useQuery(api.poolDetailsOps.myPoolDetails);
   const save = useMutation(api.poolDetailsOps.setPoolDetails);
-  const [values, setValues] = useState<PoolDetails>(EMPTY);
+  const me = useQuery(api.users.currentUser);
+  const [values, setValues] = useState<PoolDetailsInput>(EMPTY);
   const [invalid, setInvalid] = useState<{
-    field: keyof PoolDetails;
+    field: keyof PoolDetailsInput;
     error: string;
   } | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -62,12 +66,13 @@ export function PoolDetailsForm({
   // Prefill once the existing details load (editing in settings).
   useEffect(() => {
     if (existing?.poolDetails) {
-      setValues(existing.poolDetails);
+      const { name, surname, phone } = existing.poolDetails;
+      setValues({ name, surname, phone });
     }
   }, [existing?.poolDetails]);
 
   const update =
-    (field: keyof PoolDetails) =>
+    (field: keyof PoolDetailsInput) =>
     (event: React.ChangeEvent<HTMLInputElement>) => {
       const next = event.target.value;
       setValues((current) => ({ ...current, [field]: next }));
@@ -135,6 +140,17 @@ export function PoolDetailsForm({
               ) : null}
             </Stack>
           ))}
+
+          <Stack gap="1">
+            <Text fontSize="sm" fontWeight="medium">
+              Booking email
+            </Text>
+            <Text fontSize="sm" color="fg.muted">
+              {me?.email
+                ? `Uses your account email: ${me.email}`
+                : "Uses your account email."}
+            </Text>
+          </Stack>
 
           {formError ? (
             <Text color="red.500" fontSize="sm">
