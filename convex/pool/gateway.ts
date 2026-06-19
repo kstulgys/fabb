@@ -3,17 +3,16 @@
  * through a {@link PoolGateway}; nothing else in the app calls `fetch` against
  * the pool directly. Parsing the returned HTML is `parse.ts`'s job.
  *
- * Later slices extend this interface (e.g. live availability, booking). Tests
- * inject a fake gateway via {@link setPoolGateway} so Convex logic is exercised
- * against recorded fixtures and NEVER hits the real network.
- *
- * The real implementation uses the platform `fetch`, which is available in
- * Convex's default runtime — per `convex/_generated/ai/guidelines.md`, `fetch`
- * needs no `"use node"`. Keeping it in the default runtime also lets the scrape
- * action run end-to-end under `convex-test`. The `book` flow additionally
- * carries a PHP session cookie across four requests and posts a multipart body;
- * it is invoked only from the Node-runtime `bookNow` action (`book.ts`), and in
- * tests the whole gateway is swapped for a fake — the real network is NEVER hit.
+ * The pool is behind Cloudflare, whose bot challenge 403s the Convex
+ * deployment's datacenter IP for the schedule + booking endpoints. So when
+ * `POOL_RELAY_URL` + `POOL_RELAY_SECRET` are set (Convex env), every request is
+ * routed through the fabb relay Worker (see `proxy-worker/`), which egresses
+ * from Cloudflare's own network — which the pool does NOT challenge. Unset →
+ * requests go direct (fine from a residential IP, e.g. local dev). The relay is
+ * a dumb transport: this module keeps the cookie jar, the 4-step booking flow,
+ * and the parsing. Plain `fetch` only, so this stays in the default Convex
+ * runtime; tests inject a fake via {@link setPoolGateway} and NEVER hit the
+ * network.
  */
 
 import type { BookingStatus } from "../bookingStatus";
@@ -50,6 +49,42 @@ const USER_AGENT =
   "(KHTML, like Gecko) Chrome/120.0 Safari/537.36";
 
 /**
+ * Resolve the actual fetch target for a pool request. With the relay configured,
+ * the request goes to the relay Worker carrying the real pool URL + shared
+ * secret in `X-Fabb-Target` / `X-Fabb-Secret` control headers (the Worker
+ * forwards it to the pool from Cloudflare's network and returns the response,
+ * Set-Cookie included). Without it, the request goes straight to the pool.
+ * Pure — exported for tests.
+ */
+export function relayTarget(
+  url: string,
+  init: RequestInit,
+  relayUrl: string | undefined,
+  secret: string | undefined,
+): { url: string; init: RequestInit } {
+  if (!relayUrl || !secret) return { url, init };
+  const headers = new Headers(init.headers);
+  headers.set("X-Fabb-Target", url);
+  headers.set("X-Fabb-Secret", secret);
+  return { url: relayUrl, init: { ...init, headers } };
+}
+
+/**
+ * `fetch` for pool requests: routed through the relay Worker when configured,
+ * else direct. Every real gateway request goes through this so the relay applies
+ * uniformly.
+ */
+function poolFetch(url: string, init: RequestInit = {}): Promise<Response> {
+  const routed = relayTarget(
+    url,
+    init,
+    process.env.POOL_RELAY_URL,
+    process.env.POOL_RELAY_SECRET,
+  );
+  return fetch(routed.url, routed.init);
+}
+
+/**
  * Encode form fields as `multipart/form-data` (the select-class step must be
  * multipart — urlencoded silently fails to seed the class). Ported from the
  * reference `_multipart`.
@@ -76,9 +111,10 @@ function encodeMultipart(fields: Record<string, string>): {
 }
 
 /**
- * Merge a response's `Set-Cookie` header(s) into `jar` (name → value). Node's
- * `fetch` does not persist cookies, so the booking flow keeps its own jar and
- * resends it — mirroring the reference implementation's cookie jar.
+ * Merge a response's `Set-Cookie` header(s) into `jar` (name → value). `fetch`
+ * does not persist cookies, so the booking flow keeps its own jar and resends it
+ * — mirroring the reference implementation's cookie jar. The relay returns the
+ * pool's Set-Cookie headers unchanged, so this works whether routed or direct.
  */
 function absorbCookies(jar: Map<string, string>, res: Response): void {
   const getSetCookie = (
@@ -103,7 +139,7 @@ function cookieHeader(jar: Map<string, string>): string {
 
 export const realPoolGateway: PoolGateway = {
   async fetchScheduleHtml() {
-    const res = await fetch(SCHEDULE_URL, {
+    const res = await poolFetch(SCHEDULE_URL, {
       headers: { "User-Agent": USER_AGENT },
     });
     if (!res.ok) {
@@ -114,7 +150,7 @@ export const realPoolGateway: PoolGateway = {
 
   async fetchEventHtml(pid, date) {
     const url = `${EVENT_URL}?pid=${encodeURIComponent(pid)}&date=${encodeURIComponent(date)}`;
-    const res = await fetch(url, {
+    const res = await poolFetch(url, {
       headers: { "User-Agent": USER_AGENT, Referer: REGISTRACIJA_URL },
     });
     if (!res.ok) {
@@ -143,10 +179,10 @@ export const realPoolGateway: PoolGateway = {
     };
     try {
       // 1) Establish the PHP session.
-      absorbCookies(jar, await fetch(SCHEDULE_URL, { headers: headers() }));
+      absorbCookies(jar, await poolFetch(SCHEDULE_URL, { headers: headers() }));
       // 2) Open the class modal.
       const eventUrl = `${EVENT_URL}?pid=${encodeURIComponent(pid)}&date=${encodeURIComponent(date)}`;
-      absorbCookies(jar, await fetch(eventUrl, { headers: headers() }));
+      absorbCookies(jar, await poolFetch(eventUrl, { headers: headers() }));
       // 3) Seed the session's selected class (ff=goreg + pid + date, multipart).
       const select = encodeMultipart({
         ff: "goreg",
@@ -155,7 +191,7 @@ export const realPoolGateway: PoolGateway = {
       });
       absorbCookies(
         jar,
-        await fetch(REGISTRACIJA_URL, {
+        await poolFetch(REGISTRACIJA_URL, {
           method: "POST",
           headers: headers({ "Content-Type": select.contentType }),
           body: select.body,
@@ -170,7 +206,7 @@ export const realPoolGateway: PoolGateway = {
         agree: "y",
         ff: "reg",
       });
-      const res = await fetch(TPL_REG_URL, {
+      const res = await poolFetch(TPL_REG_URL, {
         method: "POST",
         headers: headers({
           "Content-Type": "application/x-www-form-urlencoded",
@@ -187,7 +223,7 @@ export const realPoolGateway: PoolGateway = {
 
 let active: PoolGateway = realPoolGateway;
 
-/** The gateway the scrape action should use. Defaults to the real network one. */
+/** The gateway the pool-I/O actions should use. Defaults to the real one. */
 export function poolGateway(): PoolGateway {
   return active;
 }
