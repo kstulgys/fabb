@@ -2,21 +2,19 @@
 
 import { Box, Button, chakra, Heading, Input, Stack, Text } from "@chakra-ui/react";
 import { useAuthActions } from "@convex-dev/auth/react";
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-type Flow = "signIn" | "signUp";
-
 /**
- * Email + password sign-in / sign-up form. The same form toggles between the
- * two flows; on success the User lands on the dashboard.
+ * Passwordless sign-in. The User enters their email and receives a one-time
+ * magic link; clicking it lands back on the app (via `SITE_URL`) already signed
+ * in. The same flow signs up a first-time email and signs in a returning one —
+ * there is no password. Once the link is sent we show a "check your email"
+ * confirmation rather than waiting on this screen.
  */
 export function AuthForm() {
   const { signIn } = useAuthActions();
-  const router = useRouter();
-  const [flow, setFlow] = useState<Flow>("signIn");
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -25,21 +23,45 @@ export function AuthForm() {
     setError(null);
     setSubmitting(true);
     try {
-      await signIn("password", { email, password, flow });
-      router.replace("/dashboard");
+      await signIn("resend", { email });
+      setSent(true);
     } catch {
-      setError(
-        flow === "signUp"
-          ? "Could not create the account. Use a valid email and a password of at least 8 characters."
-          : "Wrong email or password.",
-      );
+      setError("Couldn't send the sign-in link — check the email and try again.");
+    } finally {
       setSubmitting(false);
     }
   };
 
+  if (sent) {
+    return (
+      <Box maxW="sm" w="full" p="8" borderWidth="1px" borderRadius="xl">
+        <Heading size="lg">Check your email</Heading>
+        <Text color="fg.muted" mt="2">
+          We sent a one-time sign-in link to{" "}
+          <chakra.span fontWeight="medium" color="fg">
+            {email}
+          </chakra.span>
+          . Open it on this device to finish signing in — the link expires
+          shortly.
+        </Text>
+        <Button
+          mt="6"
+          variant="outline"
+          colorPalette="teal"
+          onClick={() => {
+            setSent(false);
+            setError(null);
+          }}
+        >
+          Use a different email
+        </Button>
+      </Box>
+    );
+  }
+
   return (
     <Box maxW="sm" w="full" p="8" borderWidth="1px" borderRadius="xl">
-      <Heading size="lg">{flow === "signIn" ? "Sign in" : "Create account"}</Heading>
+      <Heading size="lg">Sign in</Heading>
       <Text color="fg.muted" mt="1" mb="6">
         Fabijoniškės pool class tracker
       </Text>
@@ -61,21 +83,6 @@ export function AuthForm() {
             />
           </Stack>
 
-          <Stack gap="1">
-            <chakra.label htmlFor="password" fontSize="sm" fontWeight="medium">
-              Password
-            </chakra.label>
-            <Input
-              id="password"
-              name="password"
-              type="password"
-              autoComplete={flow === "signIn" ? "current-password" : "new-password"}
-              required
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-            />
-          </Stack>
-
           {error ? (
             <Text color="red.500" fontSize="sm">
               {error}
@@ -83,27 +90,13 @@ export function AuthForm() {
           ) : null}
 
           <Button type="submit" colorPalette="teal" loading={submitting}>
-            {flow === "signIn" ? "Sign in" : "Sign up"}
+            Send sign-in link
           </Button>
         </Stack>
       </form>
 
       <Text mt="6" fontSize="sm" textAlign="center" color="fg.muted">
-        {flow === "signIn" ? "New here?" : "Already have an account?"}{" "}
-        <Button
-          type="button"
-          variant="plain"
-          colorPalette="teal"
-          size="sm"
-          height="auto"
-          padding="0"
-          onClick={() => {
-            setError(null);
-            setFlow(flow === "signIn" ? "signUp" : "signIn");
-          }}
-        >
-          {flow === "signIn" ? "Create one" : "Sign in"}
-        </Button>
+        No password — we email you a one-time link.
       </Text>
     </Box>
   );
