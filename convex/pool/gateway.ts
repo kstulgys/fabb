@@ -16,8 +16,9 @@
  * tests the whole gateway is swapped for a fake — the real network is NEVER hit.
  */
 
+import type { BookingStatus } from "../bookingStatus";
 import type { PoolDetails } from "../poolDetails";
-import { type BookingStatus, parseBookingResult } from "./parse";
+import { parseBookingResult } from "./parse";
 
 export interface PoolGateway {
   /** GET the group-class schedule page (the whole current Mon–Sun week). */

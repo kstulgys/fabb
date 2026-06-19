@@ -16,7 +16,8 @@ import { useAction, useMutation, useQuery } from "convex/react";
 import { useEffect, useState } from "react";
 import { api } from "../../../convex/_generated/api";
 import type { Doc } from "../../../convex/_generated/dataModel";
-import type { Availability, BookingStatus } from "../../../convex/pool/parse";
+import type { BookingStatus } from "../../../convex/bookingStatus";
+import type { Availability } from "../../../convex/pool/parse";
 import {
   type ClassStatus,
   classStatus,

@@ -2,9 +2,9 @@
 import { convexTest } from "convex-test";
 import { afterEach, describe, expect, test } from "vitest";
 import { api } from "./_generated/api";
+import type { BookingStatus } from "./bookingStatus";
 import type { PoolGateway } from "./pool/gateway";
 import { setPoolGateway } from "./pool/gateway";
-import type { BookingStatus } from "./pool/parse";
 import { POOL_DETAILS_INCOMPLETE_MESSAGE, type PoolDetails } from "./poolDetails";
 import schema from "./schema";
 

@@ -1,6 +1,7 @@
 import { defineSchema, defineTable } from "convex/server";
 import { authTables } from "@convex-dev/auth/server";
 import { v } from "convex/values";
+import { bookingStatusValidator, attemptOutcomeValidator } from "./bookingStatus";
 
 /**
  * App schema.
@@ -79,21 +80,11 @@ const schema = defineSchema({
     // (ADR-0001). `now` bookings omit it.
     ruleId: v.optional(v.id("autoBookRules")),
     source: v.union(v.literal("rule"), v.literal("now")),
-    status: v.union(
-      v.literal("registered"),
-      v.literal("already"),
-      v.literal("full"),
-      v.literal("error"),
-    ),
+    status: bookingStatusValidator,
     runLog: v.array(
       v.object({
         at: v.number(), // epoch ms of the attempt
-        outcome: v.union(
-          v.literal("registered"),
-          v.literal("already"),
-          v.literal("full"),
-          v.literal("error"),
-        ),
+        outcome: bookingStatusValidator,
         message: v.string(),
       }),
     ),
@@ -140,14 +131,7 @@ const schema = defineSchema({
     userId: v.id("users"), // owner — scopes the per-rule run-log read
     date: v.string(), // ISO "YYYY-MM-DD" the attempt targeted (tomorrow at fire)
     at: v.number(), // epoch ms of the attempt
-    outcome: v.union(
-      v.literal("registered"),
-      v.literal("already"),
-      v.literal("full"),
-      v.literal("error"),
-      v.literal("no_match"),
-      v.literal("no_details"),
-    ),
+    outcome: attemptOutcomeValidator,
     message: v.string(),
     bookingId: v.optional(v.id("bookings")),
   }).index("by_ruleId", ["ruleId"]),

@@ -9,16 +9,7 @@
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { internalMutation, internalQuery } from "./_generated/server";
-
-/** The pool's booking outcome vocabulary as a Convex validator (the runtime
- * twin of `BookingStatus` in `pool/parse.ts`; the `bookings` table inlines the
- * same union). */
-export const bookingStatusValidator = v.union(
-  v.literal("registered"),
-  v.literal("already"),
-  v.literal("full"),
-  v.literal("error"),
-);
+import { bookingStatusValidator } from "./bookingStatus";
 
 /**
  * The cached class for `(pid, date)`, or `null` when this week's schedule has no

@@ -3,8 +3,9 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { internalAction } from "./_generated/server";
-import type { AttemptOutcome, RuleContextResult } from "./autoBook";
+import type { RuleContextResult } from "./autoBook";
 import { bookAndRecord, OUTCOME_MESSAGE } from "./book";
+import type { AttemptOutcome } from "./bookingStatus";
 
 /**
  * One day-before AutoBook attempt for a single rule, plus its retry (issue 08).

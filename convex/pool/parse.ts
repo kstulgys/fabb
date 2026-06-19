@@ -11,6 +11,8 @@
  * on the pool's markup.
  */
 
+import type { BookingStatus } from "../bookingStatus";
+
 /** One class as published on the schedule page. Calories/duration are NOT here
  * — they live on the per-class event modal, parsed by {@link parseEventDetail}. */
 export interface ScheduleClass {
@@ -145,16 +147,10 @@ export function parseAvailability(html: string): Availability {
 }
 
 /**
- * The pool's booking outcome, classified from its registration-response HTML.
- * This vocabulary (and the exact strings each maps from) is fixed by the
- * reference `book()` (`fabb.py`), authoritative on the pool's wording. Every
- * booking surface speaks it: the gateway's `book`, the `bookings` row, and the
- * `bookNow` action.
- */
-export type BookingStatus = "registered" | "already" | "full" | "error";
-
-/**
- * Classify the pool's registration response into a {@link BookingStatus}.
+ * Classify the pool's registration response into a {@link BookingStatus} — the
+ * shared booking-outcome vocabulary defined in `bookingStatus.ts` and imported
+ * above (every booking surface speaks it; an unrecognised response is `error`,
+ * never optimistically a success).
  *
  * Ported verbatim from the reference `book()` (`fabb.py`): a success banner
  * ("sėkmingai užsiregistravote") → `registered`; the already-registered notice

@@ -13,6 +13,7 @@ import type * as autoBook from "../autoBook.js";
 import type * as autoBookAttempt from "../autoBookAttempt.js";
 import type * as autoBookRules from "../autoBookRules.js";
 import type * as book from "../book.js";
+import type * as bookingStatus from "../bookingStatus.js";
 import type * as bookings from "../bookings.js";
 import type * as classes from "../classes.js";
 import type * as crons from "../crons.js";
@@ -40,6 +41,7 @@ declare const fullApi: ApiFromModules<{
   autoBookAttempt: typeof autoBookAttempt;
   autoBookRules: typeof autoBookRules;
   book: typeof book;
+  bookingStatus: typeof bookingStatus;
   bookings: typeof bookings;
   classes: typeof classes;
   crons: typeof crons;

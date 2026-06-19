@@ -1,4 +1,4 @@
-import { type Infer, v } from "convex/values";
+import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
@@ -6,6 +6,7 @@ import {
   internalQuery,
   query,
 } from "./_generated/server";
+import { attemptOutcomeValidator } from "./bookingStatus";
 import type { PoolDetails } from "./poolDetails";
 import { requireUserId } from "./users";
 import { classStatus, isoWeekday, tomorrowDate } from "./week";
@@ -20,24 +21,6 @@ import { classStatus, isoWeekday, tomorrowDate } from "./week";
  * run-log persistence + read. Disabling/deleting a rule only stops FUTURE
  * bookings; it never cancels a Booking already placed (ADR-0001).
  */
-
-/**
- * The outcome of one AutoBook attempt for a rule. Extends the pool's booking
- * vocabulary (`registered|already|full|error`) with the two outcomes the cron
- * itself produces before ever reaching the pool: `no_match` (no single class
- * matched tomorrow) and `no_details` (the owner's Pool details are incomplete).
- * The runtime twin of the `ruleRuns.outcome` union in `schema.ts`.
- */
-export const attemptOutcomeValidator = v.union(
-  v.literal("registered"),
-  v.literal("already"),
-  v.literal("full"),
-  v.literal("error"),
-  v.literal("no_match"),
-  v.literal("no_details"),
-);
-
-export type AttemptOutcome = Infer<typeof attemptOutcomeValidator>;
 
 /**
  * What {@link ruleContext} tells the attempt action to do, resolved in a single
