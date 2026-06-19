@@ -3,6 +3,7 @@ import { authTables } from "@convex-dev/auth/server";
 import { v } from "convex/values";
 import { bookingStatusValidator, attemptOutcomeValidator } from "./bookingStatus";
 import { caloriesColumns } from "./calories";
+import { poolDetailsValidator } from "./poolDetails";
 
 /**
  * App schema.
@@ -28,14 +29,7 @@ const schema = defineSchema({
     phoneVerificationTime: v.optional(v.number()),
     isAnonymous: v.optional(v.boolean()),
     // App-specific (extended by later slices).
-    poolDetails: v.optional(
-      v.object({
-        name: v.string(),
-        surname: v.string(),
-        phone: v.string(),
-        email: v.string(),
-      }),
-    ),
+    poolDetails: v.optional(poolDetailsValidator),
     detailsComplete: v.optional(v.boolean()),
   })
     .index("email", ["email"])

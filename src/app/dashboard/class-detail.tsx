@@ -242,7 +242,7 @@ type AutoBookState =
  * deleting a rule never cancels a Booking already placed.
  */
 function AutoBookWeekly({ cls }: { cls: Doc<"classes"> }) {
-  const details = useQuery(api.users.myPoolDetails);
+  const details = useQuery(api.poolDetailsOps.myPoolDetails);
   const createRule = useMutation(api.autoBookRules.createFromClass);
   const [state, setState] = useState<AutoBookState>({ kind: "idle" });
 

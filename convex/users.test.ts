@@ -41,10 +41,13 @@ describe("per-User isolation", () => {
     expect(await t.query(api.users.currentUser, {})).toBeNull();
   });
 
-  test("myProfile rejects an unauthenticated caller", async () => {
+  test("the requireUserId guard rejects an unauthenticated caller", async () => {
     const t = convexTest(schema, modules);
 
-    await expect(t.query(api.users.myProfile, {})).rejects.toThrow(
+    // myPoolDetails (now in poolDetailsOps) guards on the same requireUserId
+    // identity primitive this module owns — asserted here so the guard-demo
+    // coverage outlives the dead profile query it replaced.
+    await expect(t.query(api.poolDetailsOps.myPoolDetails, {})).rejects.toThrow(
       "Not authenticated",
     );
   });

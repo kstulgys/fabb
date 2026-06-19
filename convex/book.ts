@@ -7,7 +7,7 @@ import { action, type ActionCtx } from "./_generated/server";
 import type { BookingStatus } from "./bookingStatus";
 import { poolGateway } from "./pool/gateway";
 import type { PoolDetails } from "./poolDetails";
-import { requirePoolDetailsForAction } from "./users";
+import { requirePoolDetailsForAction } from "./poolDetailsOps";
 import { classStatus } from "./week";
 
 /**

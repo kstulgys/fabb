@@ -10,7 +10,7 @@ import { POOL_DETAILS_INCOMPLETE_MESSAGE } from "../../convex/poolDetails";
  * Booking entry points (Tasks 6/7/8) render this in place of the booking
  * control when the User's Pool details are incomplete. It is the UI twin of the
  * server-side booking gate (`requirePoolDetails` / `requirePoolDetailsForAction`
- * in `convex/users.ts`): the server is the hard stop, this gives the User a
+ * in `convex/poolDetailsOps.ts`): the server is the hard stop, this gives the User a
  * clear way to fix it. The button links to the settings screen, which hosts the
  * Pool details form.
  */

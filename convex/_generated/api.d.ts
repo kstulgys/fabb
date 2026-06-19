@@ -25,6 +25,7 @@ import type * as pool_gateway from "../pool/gateway.js";
 import type * as pool_parse from "../pool/parse.js";
 import type * as pool_scrape from "../pool/scrape.js";
 import type * as poolDetails from "../poolDetails.js";
+import type * as poolDetailsOps from "../poolDetailsOps.js";
 import type * as stats from "../stats.js";
 import type * as statsHelpers from "../statsHelpers.js";
 import type * as trainingLogs from "../trainingLogs.js";
@@ -55,6 +56,7 @@ declare const fullApi: ApiFromModules<{
   "pool/parse": typeof pool_parse;
   "pool/scrape": typeof pool_scrape;
   poolDetails: typeof poolDetails;
+  poolDetailsOps: typeof poolDetailsOps;
   stats: typeof stats;
   statsHelpers: typeof statsHelpers;
   trainingLogs: typeof trainingLogs;

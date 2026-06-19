@@ -1,21 +1,33 @@
+import { type Infer, v } from "convex/values";
+
 /**
- * Pool details: validation shared by the client form and the server mutation so
- * both enforce identical rules. Pure and runtime-agnostic — NO Convex server
- * imports — so it is safe to import from React client components (the same
- * pattern as {@link ./week}).
+ * Pool details: the four-field shape plus the validation shared by the client
+ * form and the server mutation so both enforce identical rules. Pure and
+ * runtime-agnostic — NO Convex server imports (only `convex/values`) — so it is
+ * safe to import from React client components (the same pattern as
+ * {@link ./week} and {@link ./calories}).
  *
  * Pool details are the User's identity *to the pool* (it keys bookings off the
  * email) and the exact four fields submitted on every Booking
  * (see `fabb.py` DETAIL_FIELDS): name, surname, phone, email.
  */
 
+/**
+ * The single source for the four-field Pool details shape, in the order the
+ * pool's booking form wants. The stored column ({@link ../schema}) and
+ * `setPoolDetails`'s args both derive from this validator, and
+ * {@link PoolDetails} is its inferred type — so the shape is spelled exactly
+ * once.
+ */
+export const poolDetailsValidator = v.object({
+  name: v.string(),
+  surname: v.string(),
+  phone: v.string(),
+  email: v.string(),
+});
+
 /** The four Pool details fields, in the order the pool's booking form wants. */
-export type PoolDetails = {
-  name: string;
-  surname: string;
-  phone: string;
-  email: string;
-};
+export type PoolDetails = Infer<typeof poolDetailsValidator>;
 
 /** A pragmatic "looks like an email" check: non-empty local + domain + TLD. */
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

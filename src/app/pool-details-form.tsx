@@ -30,8 +30,8 @@ const FIELDS: ReadonlyArray<{
 /**
  * The four-field Pool details form, shared by onboarding (on the dashboard, when
  * details are incomplete) and the settings screen (editing later). It prefills
- * from {@link api.users.myPoolDetails} and saves via
- * {@link api.users.setPoolDetails}.
+ * from {@link api.poolDetailsOps.myPoolDetails} and saves via
+ * {@link api.poolDetailsOps.setPoolDetails}.
  *
  * Validation uses the exact same pure {@link validatePoolDetails} the mutation
  * runs server-side, so the inline message matches the server's rejection; the
@@ -48,8 +48,8 @@ export function PoolDetailsForm({
   submitLabel: string;
   onSaved?: () => void;
 }) {
-  const existing = useQuery(api.users.myPoolDetails);
-  const save = useMutation(api.users.setPoolDetails);
+  const existing = useQuery(api.poolDetailsOps.myPoolDetails);
+  const save = useMutation(api.poolDetailsOps.setPoolDetails);
   const [values, setValues] = useState<PoolDetails>(EMPTY);
   const [invalid, setInvalid] = useState<{
     field: keyof PoolDetails;

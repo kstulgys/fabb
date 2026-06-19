@@ -4,7 +4,7 @@ import { describe, expect, test } from "vitest";
 import { api } from "./_generated/api";
 import { POOL_DETAILS_INCOMPLETE_MESSAGE, validatePoolDetails } from "./poolDetails";
 import schema from "./schema";
-import { requirePoolDetails, requirePoolDetailsForAction } from "./users";
+import { requirePoolDetails, requirePoolDetailsForAction } from "./poolDetailsOps";
 
 const modules = import.meta.glob("./**/*.ts");
 
@@ -21,9 +21,9 @@ describe("setPoolDetails + myPoolDetails", () => {
     const userId = await t.run((ctx) => ctx.db.insert("users", {}));
     const asUser = t.withIdentity({ subject: userId });
 
-    await asUser.mutation(api.users.setPoolDetails, VALID);
+    await asUser.mutation(api.poolDetailsOps.setPoolDetails, VALID);
 
-    const mine = await asUser.query(api.users.myPoolDetails, {});
+    const mine = await asUser.query(api.poolDetailsOps.myPoolDetails, {});
     expect(mine.detailsComplete).toBe(true);
     expect(mine.poolDetails).toEqual(VALID);
   });
@@ -33,14 +33,14 @@ describe("setPoolDetails + myPoolDetails", () => {
     const userId = await t.run((ctx) => ctx.db.insert("users", {}));
     const asUser = t.withIdentity({ subject: userId });
 
-    await asUser.mutation(api.users.setPoolDetails, VALID);
-    await asUser.mutation(api.users.setPoolDetails, {
+    await asUser.mutation(api.poolDetailsOps.setPoolDetails, VALID);
+    await asUser.mutation(api.poolDetailsOps.setPoolDetails, {
       ...VALID,
       surname: "Petraitis",
       phone: "+37060000000",
     });
 
-    const mine = await asUser.query(api.users.myPoolDetails, {});
+    const mine = await asUser.query(api.poolDetailsOps.myPoolDetails, {});
     expect(mine.poolDetails?.surname).toBe("Petraitis");
     expect(mine.poolDetails?.phone).toBe("+37060000000");
   });
@@ -51,10 +51,10 @@ describe("setPoolDetails + myPoolDetails", () => {
     const asUser = t.withIdentity({ subject: userId });
 
     await expect(
-      asUser.mutation(api.users.setPoolDetails, { ...VALID, email: "not-an-email" }),
+      asUser.mutation(api.poolDetailsOps.setPoolDetails, { ...VALID, email: "not-an-email" }),
     ).rejects.toThrow(/valid email/i);
 
-    const mine = await asUser.query(api.users.myPoolDetails, {});
+    const mine = await asUser.query(api.poolDetailsOps.myPoolDetails, {});
     expect(mine.detailsComplete).toBe(false);
     expect(mine.poolDetails).toBeNull();
   });
@@ -65,16 +65,16 @@ describe("setPoolDetails + myPoolDetails", () => {
     const asUser = t.withIdentity({ subject: userId });
 
     await expect(
-      asUser.mutation(api.users.setPoolDetails, { ...VALID, phone: "861234567" }),
+      asUser.mutation(api.poolDetailsOps.setPoolDetails, { ...VALID, phone: "861234567" }),
     ).rejects.toThrow(/\+370/);
   });
 
   test("an unauthenticated caller cannot set or read details", async () => {
     const t = convexTest(schema, modules);
-    await expect(t.mutation(api.users.setPoolDetails, VALID)).rejects.toThrow(
+    await expect(t.mutation(api.poolDetailsOps.setPoolDetails, VALID)).rejects.toThrow(
       "Not authenticated",
     );
-    await expect(t.query(api.users.myPoolDetails, {})).rejects.toThrow(
+    await expect(t.query(api.poolDetailsOps.myPoolDetails, {})).rejects.toThrow(
       "Not authenticated",
     );
   });
@@ -85,7 +85,7 @@ describe("requirePoolDetails — booking gate (query/mutation ctx)", () => {
     const t = convexTest(schema, modules);
     const userId = await t.run((ctx) => ctx.db.insert("users", {}));
     const asUser = t.withIdentity({ subject: userId });
-    await asUser.mutation(api.users.setPoolDetails, VALID);
+    await asUser.mutation(api.poolDetailsOps.setPoolDetails, VALID);
 
     const gated = await asUser.query((ctx) => requirePoolDetails(ctx));
     expect(gated.userId).toBe(userId);
@@ -108,7 +108,7 @@ describe("requirePoolDetailsForAction — booking gate (action ctx)", () => {
     const t = convexTest(schema, modules);
     const userId = await t.run((ctx) => ctx.db.insert("users", {}));
     const asUser = t.withIdentity({ subject: userId });
-    await asUser.mutation(api.users.setPoolDetails, VALID);
+    await asUser.mutation(api.poolDetailsOps.setPoolDetails, VALID);
 
     const gated = await asUser.action((ctx) => requirePoolDetailsForAction(ctx));
     expect(gated.userId).toBe(userId);
@@ -141,12 +141,12 @@ test("a second User cannot read the first User's Pool details (isolation)", asyn
     return { userA, userB };
   });
 
-  await t.withIdentity({ subject: userA }).mutation(api.users.setPoolDetails, VALID);
+  await t.withIdentity({ subject: userA }).mutation(api.poolDetailsOps.setPoolDetails, VALID);
 
   // B's own details view never contains A's PII.
   const bDetails = await t
     .withIdentity({ subject: userB })
-    .query(api.users.myPoolDetails, {});
+    .query(api.poolDetailsOps.myPoolDetails, {});
   expect(bDetails.detailsComplete).toBe(false);
   expect(bDetails.poolDetails).toBeNull();
 
@@ -160,7 +160,7 @@ test("a second User cannot read the first User's Pool details (isolation)", asyn
   // Sanity: A still reads their own.
   const aDetails = await t
     .withIdentity({ subject: userA })
-    .query(api.users.myPoolDetails, {});
+    .query(api.poolDetailsOps.myPoolDetails, {});
   expect(aDetails.poolDetails).toEqual(VALID);
 });
 

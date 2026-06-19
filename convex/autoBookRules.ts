@@ -2,7 +2,8 @@ import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
-import { requirePoolDetails, requireUserId } from "./users";
+import { requirePoolDetails } from "./poolDetailsOps";
+import { requireUserId } from "./users";
 import { isoWeekday } from "./week";
 
 /**
