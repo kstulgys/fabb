@@ -35,8 +35,10 @@ _Avoid_: Session, attendance, history entry, record.
 **Calories**:
 The pool-published energy estimate for a class, scraped as a range (e.g.
 500–800 kcal). Identical for every participant — a property of the class, not
-personalized to the User's body. May be absent for some classes. Stored as
-min/max; statistics use the midpoint.
+personalized to the User's body. Present as a whole range or not at all — a
+lone bound is never stored. Stored as two min/max columns; statistics use the
+midpoint, and a class with no range still counts as attendance but adds nothing
+to a Calorie total.
 _Avoid_: Burn, energy, kcal (informal).
 
 **Pool details**:
@@ -44,3 +46,28 @@ The four fields the pool requires to book — name, surname, phone, email — st
 once per User and submitted on every Booking. The User's identity *to the pool*,
 distinct from their app account; the pool keys bookings off the email.
 _Avoid_: Profile, credentials, registration info.
+
+**Booking status**:
+What the pool's registration response is classified into: `registered`,
+`already`, `full`, or `error`. The shared four-value vocabulary every booking
+surface speaks — the gateway classifies the pool's HTML into it, the Booking
+row stores the latest one, and the UI shows truthful feedback (never claiming
+success on `error`). An unrecognized response is `error`, never optimistically
+a success.
+_Avoid_: result, response code, booking state.
+
+**AutoBook outcome**:
+The verdict of one AutoBook rule attempt: the four Booking statuses plus
+`no_match` (the rule resolved to zero or 2+ classes, so nothing was booked) and
+`no_details` (the User's Pool details were incomplete). The two extra verdicts
+book nothing and are recorded only in the rule's run log — never as a Booking
+status.
+_Avoid_: attempt status, rule result.
+
+**Attendance conversion**:
+The system-context step that turns a held Booking (status `registered` or
+`already`) into a Training log once the class has finished — marking it
+`attended: true` and copying the class's name, intensity, and Calories. Runs
+from the hourly cron with no caller identity, so it trusts each Booking's own
+`userId`; idempotent, producing one Training log per Booking, ever.
+_Avoid_: sync, import, backfill, materialization.
