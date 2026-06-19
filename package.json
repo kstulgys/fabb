@@ -22,14 +22,17 @@
     "recharts": "^3.8.1"
   },
   "devDependencies": {
+    "@edge-runtime/vm": "5.0.0",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "babel-plugin-react-compiler": "1.0.0",
+    "convex-test": "0.0.53",
     "eslint": "^9",
     "eslint-config-next": "16.2.9",
     "jose": "^6.2.3",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "4.1.9"
   },
   "ignoreScripts": [
     "sharp",
