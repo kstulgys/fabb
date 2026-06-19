@@ -1,6 +1,6 @@
 "use client";
 
-import { Box, Button, chakra, Heading, Input, Stack, Text } from "@chakra-ui/react";
+import { Alert, Button, Card, Field, Input, Stack } from "@chakra-ui/react";
 import { useMutation, useQuery } from "convex/react";
 import { useEffect, useState } from "react";
 import { api } from "../../convex/_generated/api";
@@ -39,6 +39,10 @@ const FIELDS: ReadonlyArray<{
  * Validation uses the exact same pure {@link validatePoolDetails} the mutation
  * runs server-side, so the inline message matches the server's rejection; the
  * server stays the source of truth.
+ *
+ * Self-contained: it renders its own {@link Card} surface, so callers (the
+ * dashboard onboarding step and the settings screen) drop it in directly
+ * without wrapping it.
  */
 export function PoolDetailsForm({
   heading,
@@ -67,6 +71,9 @@ export function PoolDetailsForm({
   useEffect(() => {
     if (existing?.poolDetails) {
       const { name, surname, phone } = existing.poolDetails;
+      // Sync the form to async-loaded server data (settings edit) — an
+      // intentional one-shot effect setState, not a render-time derivation.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setValues({ name, surname, phone });
     }
   }, [existing?.poolDetails]);
@@ -102,72 +109,70 @@ export function PoolDetailsForm({
   };
 
   return (
-    <Box maxW="md" w="full" p="6" borderWidth="1px" borderRadius="xl">
-      <Heading size="md">{heading}</Heading>
-      {description ? (
-        <Text color="fg.muted" fontSize="sm" mt="1" mb="5">
-          {description}
-        </Text>
-      ) : (
-        <Box mb="5" />
-      )}
+    <Card.Root variant="elevated" maxW="md" w="full">
+      <Card.Body>
+        <Card.Title>{heading}</Card.Title>
+        {description ? (
+          <Card.Description mt="1">{description}</Card.Description>
+        ) : null}
 
-      <form onSubmit={handleSubmit} noValidate>
-        <Stack gap="4">
-          {FIELDS.map((field) => (
-            <Stack key={field.key} gap="1">
-              <chakra.label
-                htmlFor={field.key}
-                fontSize="sm"
-                fontWeight="medium"
+        <form onSubmit={handleSubmit} noValidate>
+          <Stack gap="4" mt="5">
+            {FIELDS.map((field) => (
+              <Field.Root
+                key={field.key}
+                required
+                invalid={invalid?.field === field.key}
               >
-                {field.label}
-              </chakra.label>
-              <Input
-                id={field.key}
-                name={field.key}
-                type={field.type}
-                autoComplete={field.autoComplete}
-                placeholder={field.placeholder}
-                value={values[field.key]}
-                onChange={update(field.key)}
-                borderColor={invalid?.field === field.key ? "red.500" : undefined}
-              />
-              {invalid?.field === field.key ? (
-                <Text color="red.500" fontSize="sm">
-                  {invalid.error}
-                </Text>
-              ) : null}
-            </Stack>
-          ))}
+                <Field.Label>{field.label}</Field.Label>
+                <Input
+                  name={field.key}
+                  type={field.type}
+                  autoComplete={field.autoComplete}
+                  placeholder={field.placeholder}
+                  value={values[field.key]}
+                  onChange={update(field.key)}
+                />
+                <Field.ErrorText>
+                  {invalid?.field === field.key ? invalid.error : null}
+                </Field.ErrorText>
+              </Field.Root>
+            ))}
 
-          <Stack gap="1">
-            <Text fontSize="sm" fontWeight="medium">
-              Booking email
-            </Text>
-            <Text fontSize="sm" color="fg.muted">
-              {me?.email
-                ? `Uses your account email: ${me.email}`
-                : "Uses your account email."}
-            </Text>
+            <Field.Root>
+              <Field.Label>Booking email</Field.Label>
+              <Input value={me?.email ?? ""} disabled />
+              <Field.HelperText>Uses your account email.</Field.HelperText>
+            </Field.Root>
+
+            {formError ? (
+              <Alert.Root status="error">
+                <Alert.Indicator />
+                <Alert.Content>
+                  <Alert.Description>{formError}</Alert.Description>
+                </Alert.Content>
+              </Alert.Root>
+            ) : null}
+            {saved ? (
+              <Alert.Root status="success">
+                <Alert.Indicator />
+                <Alert.Content>
+                  <Alert.Description>Details saved.</Alert.Description>
+                </Alert.Content>
+              </Alert.Root>
+            ) : null}
+
+            <Button
+              type="submit"
+              loading={submitting}
+              w={{ base: "full", sm: "auto" }}
+              alignSelf={{ base: "stretch", sm: "flex-start" }}
+            >
+              {submitLabel}
+            </Button>
           </Stack>
-
-          {formError ? (
-            <Text color="red.500" fontSize="sm">
-              {formError}
-            </Text>
-          ) : null}
-          {saved ? (
-            <Text color="green.600" fontSize="sm">
-              Details saved.
-            </Text>
-          ) : null}
-
-          <Button type="submit" colorPalette="teal" loading={submitting}>
-            {submitLabel}
-          </Button>
-        </Stack>
-      </form>
-    </Box>
+        </form>
+      </Card.Body>
+    </Card.Root>
   );
 }

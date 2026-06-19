@@ -1,13 +1,18 @@
 "use client";
 
 import {
+  Alert,
   Badge,
-  Box,
   Button,
+  Card,
+  CloseButton,
+  DataList,
   Dialog,
+  EmptyState,
   Field,
   Flex,
   Heading,
+  IconButton,
   Input,
   NativeSelect,
   Portal,
@@ -18,6 +23,16 @@ import {
 } from "@chakra-ui/react";
 import { useMutation, useQuery } from "convex/react";
 import { type ChangeEvent, useState } from "react";
+import {
+  LuCalendarDays,
+  LuCircleCheck,
+  LuClipboardList,
+  LuDumbbell,
+  LuPencil,
+  LuPlus,
+  LuTrash2,
+  LuX,
+} from "react-icons/lu";
 import { api } from "../../../convex/_generated/api";
 import type { Doc } from "../../../convex/_generated/dataModel";
 import { format, fromColumns } from "../../../convex/calories";
@@ -43,7 +58,7 @@ type LogInput = {
 const BLANK_FORM: FormValues = {
   className: "",
   date: "",
-  intensity: "",
+  intensity: "0",
   kcalMin: "",
   kcalMax: "",
 };
@@ -54,6 +69,23 @@ function parseNum(s: string): number | undefined {
   if (t === "") return undefined;
   const n = Number(t);
   return Number.isFinite(n) ? n : undefined;
+}
+
+/** Intensity rendered as filled hearts in a theme-aware status-red; a zero reads
+ * as a muted dash so an unrated class never shows a red mark. */
+function IntensityHearts({ value }: { value: number }) {
+  if (value <= 0) {
+    return (
+      <Text as="span" color="fg.subtle">
+        —
+      </Text>
+    );
+  }
+  return (
+    <Text as="span" color="red.solid" aria-label={`Intensity ${value} of 5`}>
+      {"❤".repeat(value)}
+    </Text>
+  );
 }
 
 /**
@@ -77,7 +109,8 @@ function ManualLogForm({
   const [error, setError] = useState<string | null>(null);
 
   const set =
-    (key: keyof FormValues) => (e: ChangeEvent<HTMLInputElement>) =>
+    (key: keyof FormValues) =>
+    (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
       setValues((v) => ({ ...v, [key]: e.target.value }));
 
   const submit = () => {
@@ -112,16 +145,19 @@ function ManualLogForm({
       </Field.Root>
       <Field.Root>
         <Field.Label>Intensity (hearts)</Field.Label>
-        <Input
-          type="number"
-          min={0}
-          max={5}
-          value={values.intensity}
-          onChange={set("intensity")}
-          placeholder="0"
-        />
+        <NativeSelect.Root>
+          <NativeSelect.Field value={values.intensity} onChange={set("intensity")}>
+            <option value="0">Not rated</option>
+            <option value="1">❤</option>
+            <option value="2">❤❤</option>
+            <option value="3">❤❤❤</option>
+            <option value="4">❤❤❤❤</option>
+            <option value="5">❤❤❤❤❤</option>
+          </NativeSelect.Field>
+          <NativeSelect.Indicator />
+        </NativeSelect.Root>
       </Field.Root>
-      <Flex gap="3">
+      <Flex gap="3" direction={{ base: "column", sm: "row" }}>
         <Field.Root>
           <Field.Label>Calories min</Field.Label>
           <Input
@@ -148,8 +184,7 @@ function ManualLogForm({
         range.
       </Text>
       <Button
-        colorPalette="teal"
-        alignSelf="flex-start"
+        alignSelf={{ base: "stretch", sm: "flex-start" }}
         loading={busy}
         loadingText="Saving…"
         onClick={submit}
@@ -157,9 +192,12 @@ function ManualLogForm({
         {submitLabel}
       </Button>
       {error && (
-        <Text fontSize="sm" color="red.600">
-          {error}
-        </Text>
+        <Alert.Root status="error">
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Description>{error}</Alert.Description>
+          </Alert.Content>
+        </Alert.Root>
       )}
     </Stack>
   );
@@ -168,16 +206,30 @@ function ManualLogForm({
 /** The prefilled facts of a picked class, so the User sees exactly what the log
  * will capture from the schedule before adding it. */
 function ClassPreview({ cls }: { cls: Doc<"classes"> }) {
-  const hearts = cls.intensity > 0 ? "❤".repeat(cls.intensity) : "—";
   return (
-    <Box borderWidth="1px" borderRadius="md" p="3">
-      <Text fontWeight="semibold">{cls.name}</Text>
-      <Flex gap="4" mt="1" fontSize="sm" color="fg.muted" wrap="wrap">
-        <Text>{cls.date}</Text>
-        <Text color="red.500">{hearts}</Text>
-        <Text>{format(fromColumns(cls), "No published calories")}</Text>
-      </Flex>
-    </Box>
+    <Card.Root variant="subtle" size="sm">
+      <Card.Body gap="3">
+        <Text fontWeight="semibold">{cls.name}</Text>
+        <DataList.Root orientation="horizontal" gap="2">
+          <DataList.Item>
+            <DataList.ItemLabel>Date</DataList.ItemLabel>
+            <DataList.ItemValue>{cls.date}</DataList.ItemValue>
+          </DataList.Item>
+          <DataList.Item>
+            <DataList.ItemLabel>Intensity</DataList.ItemLabel>
+            <DataList.ItemValue>
+              <IntensityHearts value={cls.intensity} />
+            </DataList.ItemValue>
+          </DataList.Item>
+          <DataList.Item>
+            <DataList.ItemLabel>Calories</DataList.ItemLabel>
+            <DataList.ItemValue>
+              {format(fromColumns(cls), "No published calories")}
+            </DataList.ItemValue>
+          </DataList.Item>
+        </DataList.Root>
+      </Card.Body>
+    </Card.Root>
   );
 }
 
@@ -212,10 +264,15 @@ function PickClassPanel({ onDone }: { onDone: () => void }) {
 
   if (options.length === 0) {
     return (
-      <Text color="fg.muted" fontSize="sm" pt="2">
-        No classes in this week&apos;s schedule. Use “Type details” to log a past
-        class.
-      </Text>
+      <Alert.Root status="info" mt="2">
+        <Alert.Indicator />
+        <Alert.Content>
+          <Alert.Description>
+            No classes in this week&apos;s schedule. Use “Type details” to log a
+            past class.
+          </Alert.Description>
+        </Alert.Content>
+      </Alert.Root>
     );
   }
 
@@ -259,8 +316,7 @@ function PickClassPanel({ onDone }: { onDone: () => void }) {
       {picked && <ClassPreview cls={picked} />}
 
       <Button
-        colorPalette="teal"
-        alignSelf="flex-start"
+        alignSelf={{ base: "stretch", sm: "flex-start" }}
         disabled={picked === null || busy}
         loading={busy}
         loadingText="Adding…"
@@ -269,9 +325,12 @@ function PickClassPanel({ onDone }: { onDone: () => void }) {
         Add log
       </Button>
       {error && (
-        <Text fontSize="sm" color="red.600">
-          {error}
-        </Text>
+        <Alert.Root status="error">
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Description>{error}</Alert.Description>
+          </Alert.Content>
+        </Alert.Root>
       )}
     </Stack>
   );
@@ -294,22 +353,30 @@ function AddLogDialog({
         if (!e.open) onClose();
       }}
       placement="center"
-      size="lg"
+      size={{ base: "full", md: "lg" }}
+      motionPreset="slide-in-bottom"
     >
       <Portal>
         <Dialog.Backdrop />
         <Dialog.Positioner>
-          <Dialog.Content>
+          <Dialog.Content colorPalette="teal">
             {open && (
               <>
                 <Dialog.Header>
                   <Dialog.Title>Add training log</Dialog.Title>
                 </Dialog.Header>
+                <Dialog.CloseTrigger asChild>
+                  <CloseButton size="sm" />
+                </Dialog.CloseTrigger>
                 <Dialog.Body>
-                  <Tabs.Root defaultValue="pick">
+                  <Tabs.Root defaultValue="pick" fitted>
                     <Tabs.List>
-                      <Tabs.Trigger value="pick">Pick a class</Tabs.Trigger>
-                      <Tabs.Trigger value="type">Type details</Tabs.Trigger>
+                      <Tabs.Trigger value="pick">
+                        <LuCalendarDays /> Pick a class
+                      </Tabs.Trigger>
+                      <Tabs.Trigger value="type">
+                        <LuClipboardList /> Type details
+                      </Tabs.Trigger>
                     </Tabs.List>
                     <Tabs.Content value="pick">
                       <PickClassPanel onDone={onClose} />
@@ -357,17 +424,21 @@ function EditLogDialog({
         if (!e.open) onClose();
       }}
       placement="center"
-      size="lg"
+      size={{ base: "full", md: "lg" }}
+      motionPreset="slide-in-bottom"
     >
       <Portal>
         <Dialog.Backdrop />
         <Dialog.Positioner>
-          <Dialog.Content>
+          <Dialog.Content colorPalette="teal">
             {log && (
               <>
                 <Dialog.Header>
                   <Dialog.Title>Edit training log</Dialog.Title>
                 </Dialog.Header>
+                <Dialog.CloseTrigger asChild>
+                  <CloseButton size="sm" />
+                </Dialog.CloseTrigger>
                 <Dialog.Body>
                   <ManualLogForm
                     initial={{
@@ -412,90 +483,115 @@ function LogRow({
   const setAttended = useMutation(api.trainingLogs.setAttended);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const hearts = log.intensity > 0 ? "❤".repeat(log.intensity) : "—";
   const kcal = format(fromColumns(log));
 
   return (
-    <Stack borderWidth="1px" borderRadius="lg" p="3" gap="2">
-      <Flex gap="3" align="center" justify="space-between">
-        <Box>
-          <Flex gap="2" align="baseline">
-            <Text fontWeight="semibold">{log.className}</Text>
-            <Badge
-              colorPalette={log.attended ? "green" : "gray"}
-              variant="subtle"
+    <Card.Root variant="outline" size="sm">
+      <Card.Body>
+        <Flex
+          direction={{ base: "column", md: "row" }}
+          gap="3"
+          justify="space-between"
+          align={{ md: "center" }}
+        >
+          <Stack gap="1" minW="0">
+            <Flex gap="2" align="center" wrap="wrap">
+              <Text fontWeight="semibold">{log.className}</Text>
+              <Badge
+                colorPalette={log.attended ? "green" : "gray"}
+                variant="subtle"
+              >
+                {log.attended ? "Attended" : "Missed"}
+              </Badge>
+            </Flex>
+            <Flex
+              gap="4"
+              fontSize="sm"
+              color="fg.muted"
+              align="center"
+              wrap="wrap"
             >
-              {log.attended ? "Attended" : "Missed"}
-            </Badge>
-          </Flex>
-          <Flex gap="4" mt="1" fontSize="sm" color="fg.muted" wrap="wrap">
-            <Text>{log.date}</Text>
-            <Text color="red.500">{hearts}</Text>
-            <Text>{kcal}</Text>
-          </Flex>
-        </Box>
-        <Flex gap="2" flexShrink="0">
-          {log.bookingId !== undefined && (
-            <Button
+              <Text>{log.date}</Text>
+              <IntensityHearts value={log.intensity} />
+              <Text>{kcal}</Text>
+            </Flex>
+          </Stack>
+          <Flex
+            gap="2"
+            align="center"
+            justify={{ base: "flex-end", md: "flex-start" }}
+            flexShrink="0"
+          >
+            {log.bookingId !== undefined && (
+              <Button
+                size="sm"
+                variant="outline"
+                colorPalette={log.attended ? "orange" : "green"}
+                disabled={busy}
+                onClick={() => {
+                  setBusy(true);
+                  setError(null);
+                  void setAttended({
+                    logId: log._id,
+                    attended: !log.attended,
+                  })
+                    .catch((e) =>
+                      setError(
+                        e instanceof Error
+                          ? e.message
+                          : "Couldn't update the log.",
+                      ),
+                    )
+                    .finally(() => setBusy(false));
+                }}
+              >
+                {log.attended ? <LuX /> : <LuCircleCheck />}
+                {log.attended ? "Didn't go" : "Mark attended"}
+              </Button>
+            )}
+            <IconButton
+              aria-label="Edit log"
               size="sm"
               variant="outline"
-              colorPalette={log.attended ? "orange" : "green"}
+              disabled={busy}
+              onClick={() => onEdit(log)}
+            >
+              <LuPencil />
+            </IconButton>
+            <IconButton
+              aria-label="Delete log"
+              size="sm"
+              variant="ghost"
+              colorPalette="red"
               disabled={busy}
               onClick={() => {
                 setBusy(true);
                 setError(null);
-                void setAttended({
-                  logId: log._id,
-                  attended: !log.attended,
-                })
+                void deleteLog({ logId: log._id })
                   .catch((e) =>
                     setError(
                       e instanceof Error
                         ? e.message
-                        : "Couldn't update the log.",
+                        : "Couldn't delete the log.",
                     ),
                   )
                   .finally(() => setBusy(false));
               }}
             >
-              {log.attended ? "Didn't go" : "Mark attended"}
-            </Button>
-          )}
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={busy}
-            onClick={() => onEdit(log)}
-          >
-            Edit
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            colorPalette="red"
-            disabled={busy}
-            onClick={() => {
-              setBusy(true);
-              setError(null);
-              void deleteLog({ logId: log._id })
-                .catch((e) =>
-                  setError(
-                    e instanceof Error ? e.message : "Couldn't delete the log.",
-                  ),
-                )
-                .finally(() => setBusy(false));
-            }}
-          >
-            Delete
-          </Button>
+              <LuTrash2 />
+            </IconButton>
+          </Flex>
         </Flex>
-      </Flex>
-      {error && (
-        <Text fontSize="sm" color="red.600">
-          {error}
-        </Text>
-      )}
-    </Stack>
+        {error && (
+          <Alert.Root status="error" mt="3">
+            <Alert.Indicator />
+            <Alert.Content>
+              <Alert.Description>{error}</Alert.Description>
+            </Alert.Content>
+          </Alert.Root>
+        )}
+      </Card.Body>
+    </Card.Root>
   );
 }
 
@@ -510,21 +606,26 @@ export function TrainingLog() {
   const [editing, setEditing] = useState<Doc<"trainingLogs"> | null>(null);
 
   return (
-    <Stack gap="3">
-      <Flex justify="space-between" align="flex-start" gap="3">
-        <Box>
+    <Stack gap="6">
+      <Flex
+        direction={{ base: "column", md: "row" }}
+        justify="space-between"
+        align={{ md: "center" }}
+        gap="3"
+      >
+        <Stack gap="1">
           <Heading size="md">Training log</Heading>
-          <Text color="fg.muted" fontSize="sm" mt="1">
+          <Text color="fg.muted" fontSize="sm">
             Record a class you attended — pick one from this week or type the
             details of a past class. Calories are optional.
           </Text>
-        </Box>
+        </Stack>
         <Button
-          colorPalette="teal"
+          w={{ base: "full", md: "auto" }}
           flexShrink="0"
           onClick={() => setAdding(true)}
         >
-          Add log
+          <LuPlus /> Add log
         </Button>
       </Flex>
 
@@ -533,11 +634,19 @@ export function TrainingLog() {
           <Spinner />
         </Flex>
       ) : logs.length === 0 ? (
-        <Text color="fg.muted" fontSize="sm">
-          No training logs yet. Add one to start your history.
-        </Text>
+        <EmptyState.Root>
+          <EmptyState.Content>
+            <EmptyState.Indicator>
+              <LuDumbbell />
+            </EmptyState.Indicator>
+            <EmptyState.Title>No training logs yet</EmptyState.Title>
+            <EmptyState.Description>
+              Add one to start your history.
+            </EmptyState.Description>
+          </EmptyState.Content>
+        </EmptyState.Root>
       ) : (
-        <Stack gap="2">
+        <Stack gap="3">
           {logs.map((log) => (
             <LogRow key={log._id} log={log} onEdit={setEditing} />
           ))}

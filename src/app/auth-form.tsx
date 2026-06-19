@@ -1,8 +1,18 @@
 "use client";
 
-import { Box, Button, chakra, Heading, Input, Stack, Text } from "@chakra-ui/react";
+import {
+  Alert,
+  Button,
+  Card,
+  Field,
+  Icon,
+  Input,
+  Stack,
+  Text,
+} from "@chakra-ui/react";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useState } from "react";
+import { LuMailCheck } from "react-icons/lu";
 
 /**
  * Passwordless sign-in. The User enters their email and receives a one-time
@@ -34,70 +44,78 @@ export function AuthForm() {
 
   if (sent) {
     return (
-      <Box maxW="sm" w="full" p="8" borderWidth="1px" borderRadius="xl">
-        <Heading size="lg">Check your email</Heading>
-        <Text color="fg.muted" mt="2">
-          We sent a one-time sign-in link to{" "}
-          <chakra.span fontWeight="medium" color="fg">
-            {email}
-          </chakra.span>
-          . Open it on this device to finish signing in — the link expires
-          shortly.
-        </Text>
-        <Button
-          mt="6"
-          variant="outline"
-          colorPalette="teal"
-          onClick={() => {
-            setSent(false);
-            setError(null);
-          }}
-        >
-          Use a different email
-        </Button>
-      </Box>
+      <Card.Root variant="elevated" maxW="sm" w="full">
+        <Card.Body gap="5">
+          <Icon size="2xl" color="colorPalette.fg">
+            <LuMailCheck />
+          </Icon>
+          <Stack gap="1">
+            <Card.Title>Check your email</Card.Title>
+            <Card.Description>
+              We sent a one-time sign-in link to{" "}
+              <Text as="span" fontWeight="medium" color="fg">
+                {email}
+              </Text>
+              . Open it on this device to finish signing in — the link expires
+              shortly.
+            </Card.Description>
+          </Stack>
+          <Button
+            variant="outline"
+            w="full"
+            onClick={() => {
+              setSent(false);
+              setError(null);
+            }}
+          >
+            Use a different email
+          </Button>
+        </Card.Body>
+      </Card.Root>
     );
   }
 
   return (
-    <Box maxW="sm" w="full" p="8" borderWidth="1px" borderRadius="xl">
-      <Heading size="lg">Sign in</Heading>
-      <Text color="fg.muted" mt="1" mb="6">
-        Fabijoniškės pool class tracker
-      </Text>
-
-      <form onSubmit={handleSubmit}>
-        <Stack gap="4">
-          <Stack gap="1">
-            <chakra.label htmlFor="email" fontSize="sm" fontWeight="medium">
-              Email
-            </chakra.label>
-            <Input
-              id="email"
-              name="email"
-              type="email"
-              autoComplete="email"
-              required
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-            />
-          </Stack>
-
-          {error ? (
-            <Text color="red.500" fontSize="sm">
-              {error}
-            </Text>
-          ) : null}
-
-          <Button type="submit" colorPalette="teal" loading={submitting}>
-            Send sign-in link
-          </Button>
+    <Card.Root variant="elevated" maxW="sm" w="full">
+      <Card.Body gap="5">
+        <Stack gap="1">
+          <Card.Title>Sign in</Card.Title>
+          <Card.Description>Fabijoniškės pool class tracker</Card.Description>
         </Stack>
-      </form>
 
-      <Text mt="6" fontSize="sm" textAlign="center" color="fg.muted">
-        No password — we email you a one-time link.
-      </Text>
-    </Box>
+        <form onSubmit={handleSubmit}>
+          <Stack gap="4">
+            <Field.Root id="email" required>
+              <Field.Label>Email</Field.Label>
+              <Input
+                name="email"
+                type="email"
+                autoComplete="email"
+                required
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+              />
+            </Field.Root>
+
+            {error ? (
+              <Alert.Root status="error">
+                <Alert.Indicator />
+                <Alert.Content>
+                  <Alert.Description>{error}</Alert.Description>
+                </Alert.Content>
+              </Alert.Root>
+            ) : null}
+
+            <Button type="submit" loading={submitting} w="full">
+              Send sign-in link
+            </Button>
+          </Stack>
+        </form>
+
+        <Text fontSize="sm" color="fg.muted" textAlign="center">
+          No password — we email you a one-time link.
+        </Text>
+      </Card.Body>
+    </Card.Root>
   );
 }

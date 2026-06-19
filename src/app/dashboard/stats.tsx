@@ -2,17 +2,20 @@
 
 import { Chart, useChart } from "@chakra-ui/charts";
 import {
-  Box,
-  Button,
+  Card,
+  EmptyState,
   Flex,
   Heading,
+  SegmentGroup,
   SimpleGrid,
   Spinner,
   Stack,
+  Stat,
   Text,
 } from "@chakra-ui/react";
 import { useQuery } from "convex/react";
 import { useState } from "react";
+import { LuChartColumn } from "react-icons/lu";
 import {
   Bar,
   BarChart,
@@ -35,17 +38,17 @@ const PERIOD_LABELS: Record<Period, string> = {
 };
 
 /** One headline figure. Three lockstep call sites (classes / calories / streak)
- * share this shell so they stay visually identical. */
+ * share this Stat-in-Card shell so they stay visually identical. */
 function StatCard({ label, value }: { label: string; value: string }) {
   return (
-    <Box borderWidth="1px" borderRadius="md" p="4">
-      <Text color="fg.muted" fontSize="xs" textTransform="uppercase" letterSpacing="wide">
-        {label}
-      </Text>
-      <Heading size="2xl" mt="1">
-        {value}
-      </Heading>
-    </Box>
+    <Card.Root variant="elevated">
+      <Card.Body>
+        <Stat.Root>
+          <Stat.Label>{label}</Stat.Label>
+          <Stat.ValueText fontSize="3xl">{value}</Stat.ValueText>
+        </Stat.Root>
+      </Card.Body>
+    </Card.Root>
   );
 }
 
@@ -58,12 +61,12 @@ function ChartCard({
   children: React.ReactNode;
 }) {
   return (
-    <Box borderWidth="1px" borderRadius="md" p="4">
-      <Heading size="sm" mb="3">
-        {title}
-      </Heading>
-      {children}
-    </Box>
+    <Card.Root variant="elevated">
+      <Card.Header pb="3">
+        <Card.Title fontSize="sm">{title}</Card.Title>
+      </Card.Header>
+      <Card.Body pt="0">{children}</Card.Body>
+    </Card.Root>
   );
 }
 
@@ -107,42 +110,56 @@ export function Stats() {
   });
 
   return (
-    <Stack gap="4">
-      <Box>
+    <Stack gap="6">
+      <Stack gap="1">
         <Heading size="md">Your progress</Heading>
-        <Text color="fg.muted" fontSize="sm" mt="1">
+        <Text color="fg.muted" fontSize="sm">
           Stats from the classes you attended. Calories use each class&apos;s
           published range midpoint; classes without a range still count as
           attendance.
         </Text>
-      </Box>
+      </Stack>
 
       {summary === undefined ? (
         <Flex justify="center" py="6">
           <Spinner />
         </Flex>
       ) : topTypes.length === 0 ? (
-        <Text color="fg.muted" fontSize="sm">
-          No attended classes yet. Your stats appear once you log a class you
-          went to.
-        </Text>
+        <EmptyState.Root>
+          <EmptyState.Content>
+            <EmptyState.Indicator>
+              <LuChartColumn />
+            </EmptyState.Indicator>
+            <EmptyState.Title>No attended classes yet</EmptyState.Title>
+            <EmptyState.Description>
+              Your stats appear once you log a class you went to.
+            </EmptyState.Description>
+          </EmptyState.Content>
+        </EmptyState.Root>
       ) : (
         <Stack gap="6">
-          <Stack direction="row" gap="2">
+          <SegmentGroup.Root
+            value={period}
+            onValueChange={(e) => setPeriod(e.value as Period)}
+            w={{ base: "full", sm: "auto" }}
+          >
+            <SegmentGroup.Indicator />
             {(["week", "month", "all"] as const).map((p) => (
-              <Button
+              <SegmentGroup.Item
                 key={p}
-                size="sm"
-                variant={p === period ? "solid" : "outline"}
-                colorPalette="teal"
-                onClick={() => setPeriod(p)}
+                value={p}
+                flex={{ base: "1", sm: "initial" }}
+                justifyContent="center"
               >
-                {PERIOD_LABELS[p]}
-              </Button>
+                <SegmentGroup.ItemText>
+                  {PERIOD_LABELS[p]}
+                </SegmentGroup.ItemText>
+                <SegmentGroup.ItemHiddenInput />
+              </SegmentGroup.Item>
             ))}
-          </Stack>
+          </SegmentGroup.Root>
 
-          <SimpleGrid columns={{ base: 1, sm: 3 }} gap="3">
+          <SimpleGrid columns={{ base: 1, sm: 3 }} gap="4">
             <StatCard
               label={`Classes (${PERIOD_LABELS[period].toLowerCase()})`}
               value={String(summary.totals.classes)}
@@ -154,9 +171,7 @@ export function Stats() {
             <StatCard
               label="Current streak"
               value={
-                summary.streak === 1
-                  ? "1 week"
-                  : `${summary.streak} weeks`
+                summary.streak === 1 ? "1 week" : `${summary.streak} weeks`
               }
             />
           </SimpleGrid>

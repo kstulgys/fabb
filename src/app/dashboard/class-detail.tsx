@@ -1,15 +1,19 @@
 "use client";
 
 import {
+  Alert,
   Badge,
-  Box,
   Button,
+  Card,
+  CloseButton,
+  DataList,
   Dialog,
-  Flex,
-  Heading,
+  HStack,
   Portal,
+  Span,
   Spinner,
   Stack,
+  Stat,
   Text,
 } from "@chakra-ui/react";
 import { useAction, useMutation, useQuery } from "convex/react";
@@ -47,11 +51,6 @@ export function StatusBadge({ status }: { status: ClassStatus }) {
   );
 }
 
-const formatTime = (cls: Doc<"classes">) =>
-  cls.endTime && cls.endTime !== cls.startTime
-    ? `${cls.startTime}–${cls.endTime}`
-    : cls.startTime;
-
 type LiveState =
   | { kind: "loading" }
   | { kind: "error" }
@@ -66,6 +65,9 @@ function LiveSpots({ cls }: { cls: Doc<"classes"> }) {
 
   useEffect(() => {
     let cancelled = false;
+    // Reset to loading on every (re)open and manual retry so the spinner shows
+    // while the volatile availability is refetched (ADR-0002, never cached).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setState({ kind: "loading" });
     fetchAvailability({ pid: cls.pid, date: cls.date })
       .then((data) => {
@@ -81,61 +83,61 @@ function LiveSpots({ cls }: { cls: Doc<"classes"> }) {
 
   if (state.kind === "loading") {
     return (
-      <Flex align="center" gap="2" color="fg.muted">
+      <HStack gap="2" color="fg.muted">
         <Spinner size="sm" />
-        <Text fontSize="sm">Loading live availability…</Text>
-      </Flex>
+        <Text fontSize="sm">Checking live availability…</Text>
+      </HStack>
     );
   }
 
   if (state.kind === "error") {
     return (
-      <Stack gap="2" align="flex-start">
-        <Text fontSize="sm" color="red.500">
-          Couldn't load live availability.
-        </Text>
-        <Button
-          size="xs"
-          variant="outline"
-          onClick={() => setReloadAt((n) => n + 1)}
-        >
-          Retry
-        </Button>
-      </Stack>
+      <Alert.Root status="error">
+        <Alert.Indicator />
+        <Alert.Content alignItems="flex-start" gap="2">
+          <Alert.Title>Couldn&apos;t load live availability</Alert.Title>
+          <Button
+            size="xs"
+            variant="outline"
+            colorPalette="gray"
+            onClick={() => setReloadAt((n) => n + 1)}
+          >
+            Retry
+          </Button>
+        </Alert.Content>
+      </Alert.Root>
     );
   }
 
   const { free, max, registered } = state.data;
+  const hasCount = free != null || max != null;
   const headline =
     free != null && max != null
       ? `${free} / ${max}`
       : free != null
         ? `${free}`
         : "—";
+  const help =
+    (registered != null ? `${registered} registered` : "Registrations —") +
+    (max != null ? ` · ${max} max` : "");
 
   return (
-    <Stack gap="1">
-      <Flex align="baseline" gap="2">
-        <Heading size="lg">{headline}</Heading>
-        <Text color="fg.muted">spots free</Text>
-      </Flex>
-      <Text fontSize="sm" color="fg.muted">
-        {registered != null ? `${registered} registered` : "Registrations —"}
-        {max != null ? ` · ${max} max` : ""}
-      </Text>
-    </Stack>
-  );
-}
-
-/** A read-only labelled fact in the detail grid. */
-function Fact({ label, value }: { label: string; value: string }) {
-  return (
-    <Box>
-      <Text fontSize="xs" color="fg.muted" textTransform="uppercase">
-        {label}
-      </Text>
-      <Text>{value}</Text>
-    </Box>
+    <Card.Root variant="subtle">
+      <Card.Body>
+        <Stat.Root>
+          <Stat.Label>Live availability</Stat.Label>
+          <Stat.ValueText>
+            {headline}
+            {hasCount && (
+              <Span ms="2" fontSize="sm" fontWeight="medium" color="fg.muted">
+                spots free
+              </Span>
+            )}
+          </Stat.ValueText>
+          <Stat.HelpText>{help}</Stat.HelpText>
+        </Stat.Root>
+      </Card.Body>
+    </Card.Root>
   );
 }
 
@@ -165,6 +167,24 @@ const RESULT_META: Record<BookingStatus, { palette: string; text: string }> = {
     text: "Booking didn't go through — no spot was reserved. Please try again.",
   },
 };
+
+type AlertStatus = "success" | "info" | "warning" | "error";
+
+/** Maps a booking-outcome palette to the matching Alert status, preserving the
+ * truthful semantics (ADR-0001): green→success, blue→info, orange→warning,
+ * red→error — so an `error` outcome surfaces as a failure, never as success. */
+function alertStatus(palette: string): AlertStatus {
+  switch (palette) {
+    case "green":
+      return "success";
+    case "orange":
+      return "warning";
+    case "red":
+      return "error";
+    default:
+      return "info";
+  }
+}
 
 /**
  * The "Book now" control plus truthful outcome feedback.
@@ -202,24 +222,27 @@ function BookNow({ cls }: { cls: Doc<"classes"> }) {
   const held = state.kind === "done" && isHeld(state.status);
 
   return (
-    <Stack gap="2" align="flex-start" flex="1">
+    <Stack gap="3">
       <Button
-        colorPalette="teal"
         loading={state.kind === "booking"}
         loadingText="Booking…"
         disabled={held}
         onClick={onBook}
+        w={{ base: "full", sm: "auto" }}
       >
         Book now
       </Button>
       {outcome && (
-        <Text fontSize="sm" color={`${outcome.palette}.600`} maxW="sm">
-          {outcome.text}
-        </Text>
+        <Alert.Root status={alertStatus(outcome.palette)}>
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Description>{outcome.text}</Alert.Description>
+          </Alert.Content>
+        </Alert.Root>
       )}
-      <Text fontSize="xs" color="fg.muted" maxW="sm">
+      <Text fontSize="xs" color="fg.muted">
         The pool emails a confirmation with the only working cancel link —
-        bookings can't be cancelled in the app.
+        bookings can&apos;t be cancelled in the app.
       </Text>
     </Stack>
   );
@@ -268,29 +291,37 @@ function AutoBookWeekly({ cls }: { cls: Doc<"classes"> }) {
   };
 
   return (
-    <Stack gap="2" align="flex-start">
+    <Stack gap="3">
       <Button
         variant="outline"
-        colorPalette="teal"
         loading={state.kind === "saving"}
         loadingText="Setting up…"
         disabled={state.kind === "done"}
         onClick={onCreate}
+        w={{ base: "full", sm: "auto" }}
       >
         Auto-book weekly
       </Button>
       {state.kind === "done" && (
-        <Text fontSize="sm" color="green.600" maxW="sm">
-          Weekly auto-book set: every {weekday} at {cls.startTime} for “{cls.name}
-          ”. Manage it under Auto-book rules below.
-        </Text>
+        <Alert.Root status="success">
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Description>
+              Weekly auto-book set: every {weekday} at {cls.startTime} for “
+              {cls.name}”. Manage it under Auto-book rules below.
+            </Alert.Description>
+          </Alert.Content>
+        </Alert.Root>
       )}
       {state.kind === "failed" && (
-        <Text fontSize="sm" color="red.600" maxW="sm">
-          {state.message}
-        </Text>
+        <Alert.Root status="error">
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Description>{state.message}</Alert.Description>
+          </Alert.Content>
+        </Alert.Root>
       )}
-      <Text fontSize="xs" color="fg.muted" maxW="sm">
+      <Text fontSize="xs" color="fg.muted">
         Books “{cls.name}” every {weekday} at {cls.startTime} from next week on.
         Disabling or deleting the rule stops future bookings but never cancels a
         booking already placed.
@@ -306,7 +337,10 @@ function AutoBookWeekly({ cls }: { cls: Doc<"classes"> }) {
  * booking is gated on {@link classStatus}'s `bookable` flag.
  *
  * Rendered controlled: `cls` non-null opens it; the inner body is mounted only
- * while open, so the live fetch re-runs on every open.
+ * while open, so the live fetch re-runs on every open. On phones it is a
+ * full-screen sheet (`size="full"` + slide-in-bottom); on desktop a centered
+ * dialog. The teal accent is re-established on the content because the Portal
+ * escapes the AppShell's `colorPalette="teal"` root.
  */
 export function ClassDetailDialog({
   cls,
@@ -323,12 +357,17 @@ export function ClassDetailDialog({
       onOpenChange={(e) => {
         if (!e.open) onClose();
       }}
+      size={{ base: "full", md: "lg" }}
       placement="center"
+      scrollBehavior="inside"
+      motionPreset="slide-in-bottom"
     >
       <Portal>
         <Dialog.Backdrop />
         <Dialog.Positioner>
-          <Dialog.Content>{cls && <DetailContent cls={cls} now={now} onClose={onClose} />}</Dialog.Content>
+          <Dialog.Content colorPalette="teal">
+            {cls && <DetailContent cls={cls} now={now} onClose={onClose} />}
+          </Dialog.Content>
         </Dialog.Positioner>
       </Portal>
     </Dialog.Root>
@@ -348,63 +387,81 @@ function DetailContent({
   const kcal = format(fromColumns(cls));
   const duration = cls.durationMin != null ? `${cls.durationMin} min` : "—";
   const hearts = cls.intensity > 0 ? "❤".repeat(cls.intensity) : "—";
+  const time =
+    cls.endTime && cls.endTime !== cls.startTime
+      ? `${cls.startTime}–${cls.endTime}`
+      : cls.startTime;
 
   return (
     <>
       <Dialog.Header>
-        <Stack gap="2">
+        <Stack gap="2" pe="10">
           <Dialog.Title>{cls.name}</Dialog.Title>
-          <Flex gap="2" align="center">
-            <Badge variant="subtle">{formatTime(cls)}</Badge>
+          <HStack gap="2">
+            <Badge colorPalette="gray" variant="subtle">
+              {time}
+            </Badge>
             <StatusBadge status={status} />
-          </Flex>
+          </HStack>
         </Stack>
+        <Dialog.CloseTrigger asChild>
+          <CloseButton size="sm" colorPalette="gray" />
+        </Dialog.CloseTrigger>
       </Dialog.Header>
 
       <Dialog.Body>
-        <Stack gap="5">
-          <Box>
-            <Text
-              fontSize="xs"
-              color="fg.muted"
-              textTransform="uppercase"
-              mb="1"
-            >
-              Live availability
-            </Text>
-            <LiveSpots cls={cls} />
-          </Box>
+        <Stack gap={{ base: "5", md: "6" }}>
+          <LiveSpots cls={cls} />
 
-          <Flex gap="6" wrap="wrap">
-            <Fact label="Date" value={cls.date} />
-            <Fact label="Duration" value={duration} />
-            <Fact label="Calories" value={kcal} />
-            <Box>
-              <Text fontSize="xs" color="fg.muted" textTransform="uppercase">
-                Intensity
-              </Text>
-              <Text color="red.500">{hearts}</Text>
-            </Box>
-          </Flex>
+          <DataList.Root
+            orientation={{ base: "vertical", md: "horizontal" }}
+            gap="3"
+          >
+            <DataList.Item>
+              <DataList.ItemLabel>Date</DataList.ItemLabel>
+              <DataList.ItemValue>{cls.date}</DataList.ItemValue>
+            </DataList.Item>
+            <DataList.Item>
+              <DataList.ItemLabel>Duration</DataList.ItemLabel>
+              <DataList.ItemValue>{duration}</DataList.ItemValue>
+            </DataList.Item>
+            <DataList.Item>
+              <DataList.ItemLabel>Calories</DataList.ItemLabel>
+              <DataList.ItemValue>{kcal}</DataList.ItemValue>
+            </DataList.Item>
+            <DataList.Item>
+              <DataList.ItemLabel>Intensity</DataList.ItemLabel>
+              <DataList.ItemValue
+                color={cls.intensity > 0 ? "red.solid" : undefined}
+              >
+                {hearts}
+              </DataList.ItemValue>
+            </DataList.Item>
+          </DataList.Root>
         </Stack>
       </Dialog.Body>
 
-      <Dialog.Footer
-        justifyContent="space-between"
-        gap="3"
-        alignItems="flex-start"
-      >
-        <Stack gap="4" flex="1">
-          {bookable ? (
-            <BookNow key={cls._id} cls={cls} />
-          ) : (
-            <Text fontSize="sm" color="fg.muted">
-              This class has finished — it can no longer be booked.
-            </Text>
-          )}
-          <AutoBookWeekly key={`autobook-${cls._id}`} cls={cls} />
-        </Stack>
-        <Button variant="outline" onClick={onClose}>
+      <Dialog.Footer flexDirection="column" alignItems="stretch" gap="5">
+        {bookable ? (
+          <BookNow key={cls._id} cls={cls} />
+        ) : (
+          <Alert.Root status="info">
+            <Alert.Indicator />
+            <Alert.Content>
+              <Alert.Description>
+                This class has finished — it can no longer be booked.
+              </Alert.Description>
+            </Alert.Content>
+          </Alert.Root>
+        )}
+        <AutoBookWeekly key={`autobook-${cls._id}`} cls={cls} />
+        <Button
+          variant="outline"
+          colorPalette="gray"
+          onClick={onClose}
+          w={{ base: "full", sm: "auto" }}
+          alignSelf={{ base: "stretch", sm: "flex-end" }}
+        >
           Close
         </Button>
       </Dialog.Footer>

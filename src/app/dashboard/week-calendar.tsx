@@ -1,16 +1,68 @@
 "use client";
 
-import { Badge, Box, chakra, Flex, Heading, Spinner, Stack, Text } from "@chakra-ui/react";
+import {
+  Badge,
+  Card,
+  Flex,
+  Heading,
+  HStack,
+  Icon,
+  Span,
+  Spinner,
+  Stack,
+  Text,
+} from "@chakra-ui/react";
 import { useQuery } from "convex/react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import { LuCalendarDays, LuClock, LuFlame, LuHeart } from "react-icons/lu";
 import { api } from "../../../convex/_generated/api";
 import type { Doc } from "../../../convex/_generated/dataModel";
 import { format, fromColumns } from "../../../convex/calories";
 import { classStatus } from "../../../convex/week";
 import { ClassDetailDialog, StatusBadge } from "./class-detail";
 
-/** One class within a day. Clicking opens the detail dialog with its live
- * free-spot count. Today's finished classes are struck through and marked. */
+/** A class's intensity drawn as filled hearts, token-safe under the red
+ * palette (the row of glyphs carries one `aria-label` so a screen reader hears
+ * the count once). No recorded intensity shows an em dash. */
+function Intensity({ value }: { value: number }) {
+  const label = `intensity ${value}`;
+  if (value <= 0) {
+    return (
+      <Span role="img" aria-label={label}>
+        —
+      </Span>
+    );
+  }
+  return (
+    <HStack
+      gap="0.5"
+      role="img"
+      aria-label={label}
+      colorPalette="red"
+      color="colorPalette.solid"
+    >
+      {Array.from({ length: value }, (_, i) => (
+        <Icon key={i} boxSize="3.5">
+          <LuHeart fill="currentColor" />
+        </Icon>
+      ))}
+    </HStack>
+  );
+}
+
+/** A read-only fact in a class row: a small muted icon beside its value. */
+function Fact({ icon, value }: { icon: ReactNode; value: string }) {
+  return (
+    <HStack gap="1.5">
+      <Icon boxSize="3.5">{icon}</Icon>
+      <Span>{value}</Span>
+    </HStack>
+  );
+}
+
+/** One class within a day, rendered as a clickable card. Clicking opens the
+ * detail dialog with its live free-spot count. Today's finished classes are
+ * dimmed and struck through. */
 function ClassRow({
   cls,
   now,
@@ -28,49 +80,55 @@ function ClassRow({
       : cls.startTime;
   const kcal = format(fromColumns(cls));
   const duration = cls.durationMin != null ? `${cls.durationMin} min` : "—";
-  const hearts = cls.intensity > 0 ? "❤".repeat(cls.intensity) : "—";
 
   return (
-    <chakra.button
-      type="button"
-      onClick={onOpen}
+    <Card.Root
+      as="button"
+      variant="outline"
       textAlign="left"
-      width="full"
-      borderWidth="1px"
-      borderRadius="lg"
-      p="3"
+      w="full"
       cursor="pointer"
+      onClick={onOpen}
       opacity={finished ? 0.6 : 1}
-      _hover={{ borderColor: "fg.muted", bg: "bg.subtle" }}
-      _focusVisible={{ outline: "2px solid", outlineColor: "blue.500" }}
+      transition="background-color 0.15s ease-out, border-color 0.15s ease-out"
+      _hover={{ bg: "bg.subtle", borderColor: "border.emphasized" }}
+      _active={{ bg: "bg.muted" }}
+      _focusVisible={{
+        outline: "2px solid",
+        outlineColor: "colorPalette.focusRing",
+        outlineOffset: "2px",
+      }}
     >
-      <Flex justify="space-between" align="baseline" gap="3">
-        <Text
-          fontWeight="semibold"
-          textDecoration={finished ? "line-through" : undefined}
-        >
-          {cls.name}
-        </Text>
-        <Flex gap="2" align="center" flexShrink="0">
-          {status !== "upcoming" && <StatusBadge status={status} />}
-          <Badge variant="subtle">{time}</Badge>
-        </Flex>
-      </Flex>
-      <Flex
-        gap="4"
-        mt="1"
-        fontSize="sm"
-        color="fg.muted"
-        align="center"
-        wrap="wrap"
-      >
-        <Text color="red.500" aria-label={`intensity ${cls.intensity}`}>
-          {hearts}
-        </Text>
-        <Text>{kcal}</Text>
-        <Text>{duration}</Text>
-      </Flex>
-    </chakra.button>
+      <Card.Body px="4" py="3.5">
+        <Stack gap="1.5">
+          <Flex justify="space-between" align="start" gap="3">
+            <Text
+              as="span"
+              fontWeight="semibold"
+              textDecoration={finished ? "line-through" : undefined}
+            >
+              {cls.name}
+            </Text>
+            <HStack gap="2" flexShrink="0">
+              {status !== "upcoming" && <StatusBadge status={status} />}
+              <Badge variant="subtle">{time}</Badge>
+            </HStack>
+          </Flex>
+          <Flex
+            wrap="wrap"
+            align="center"
+            columnGap="4"
+            rowGap="1.5"
+            fontSize="sm"
+            color="fg.muted"
+          >
+            <Intensity value={cls.intensity} />
+            <Fact icon={<LuFlame />} value={kcal} />
+            <Fact icon={<LuClock />} value={duration} />
+          </Flex>
+        </Stack>
+      </Card.Body>
+    </Card.Root>
   );
 }
 
@@ -95,22 +153,27 @@ export function WeekCalendar() {
   }
 
   return (
-    <Stack gap="6">
-      <Box>
-        <Heading size="md">This week</Heading>
-        <Text color="fg.muted" fontSize="sm" mt="1">
+    <Stack gap="8">
+      <Stack gap="1">
+        <HStack gap="2">
+          <Icon color="colorPalette.fg" boxSize="5">
+            <LuCalendarDays />
+          </Icon>
+          <Heading size="md">This week</Heading>
+        </HStack>
+        <Text color="fg.muted" fontSize="sm">
           {week.weekStart} – {week.weekEnd}. Only the current week is available.
         </Text>
-      </Box>
+      </Stack>
 
-      <Stack gap="5">
+      <Stack gap="6">
         {week.days.map((day) => (
-          <Box key={day.date}>
-            <Heading size="sm" mb="2">
+          <Stack gap="2" key={day.date}>
+            <Heading size="sm">
               {day.weekday}{" "}
-              <Text as="span" color="fg.muted" fontWeight="normal">
+              <Span color="fg.muted" fontWeight="normal">
                 · {day.date}
-              </Text>
+              </Span>
             </Heading>
             {day.classes.length === 0 ? (
               <Text color="fg.muted" fontSize="sm">
@@ -128,7 +191,7 @@ export function WeekCalendar() {
                 ))}
               </Stack>
             )}
-          </Box>
+          </Stack>
         ))}
       </Stack>
 

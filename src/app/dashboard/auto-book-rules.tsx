@@ -1,17 +1,21 @@
 "use client";
 
 import {
+  Alert,
   Badge,
-  Box,
-  Button,
+  Card,
+  EmptyState,
   Flex,
   Heading,
+  IconButton,
   Spinner,
   Stack,
+  Switch,
   Text,
 } from "@chakra-ui/react";
 import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
+import { LuRepeat2, LuTrash2 } from "react-icons/lu";
 import { api } from "../../../convex/_generated/api";
 import type { Doc } from "../../../convex/_generated/dataModel";
 import { weekdayLabel } from "../../../convex/week";
@@ -80,78 +84,83 @@ function RuleRow({ rule }: { rule: Doc<"autoBookRules"> }) {
   const runs = useQuery(api.autoBook.recentRuns, { ruleId: rule._id });
 
   return (
-    <Stack
-      borderWidth="1px"
-      borderRadius="lg"
-      p="3"
-      gap="2"
-      opacity={rule.enabled ? 1 : 0.6}
-    >
-      <Flex gap="3" align="center" justify="space-between">
-        <Box>
-          <Flex gap="2" align="baseline">
-            <Text fontWeight="semibold">{rule.nameMatch}</Text>
-            <Badge
-              colorPalette={rule.enabled ? "green" : "gray"}
-              variant="subtle"
+    <Card.Root variant="outline" opacity={rule.enabled ? 1 : 0.6}>
+      <Card.Body gap="3">
+        <Flex gap="3" align="flex-start" justify="space-between" wrap="wrap">
+          <Stack gap="1" flex="1" minW="0">
+            <Flex gap="2" align="center" wrap="wrap">
+              <Text fontWeight="semibold">{rule.nameMatch}</Text>
+              <Badge
+                colorPalette={rule.enabled ? "green" : "gray"}
+                variant="subtle"
+              >
+                {rule.enabled ? "Enabled" : "Disabled"}
+              </Badge>
+            </Flex>
+            <Text fontSize="sm" color="fg.muted">
+              Every {weekdayLabel(rule.weekday)} at {rule.startTime}
+            </Text>
+          </Stack>
+          <Flex gap="1" align="center" flexShrink="0">
+            <Switch.Root
+              checked={rule.enabled}
+              disabled={busy}
+              onCheckedChange={() => {
+                setBusy(true);
+                setError(null);
+                void setEnabled({ ruleId: rule._id, enabled: !rule.enabled })
+                  .catch((e) =>
+                    setError(
+                      e instanceof Error
+                        ? e.message
+                        : "Couldn't update the rule.",
+                    ),
+                  )
+                  .finally(() => setBusy(false));
+              }}
             >
-              {rule.enabled ? "Enabled" : "Disabled"}
-            </Badge>
+              <Switch.HiddenInput />
+              <Switch.Control>
+                <Switch.Thumb />
+              </Switch.Control>
+              <Switch.Label srOnly>
+                Auto-book {rule.nameMatch} every {weekdayLabel(rule.weekday)}
+              </Switch.Label>
+            </Switch.Root>
+            <IconButton
+              aria-label="Delete rule"
+              colorPalette="red"
+              variant="ghost"
+              disabled={busy}
+              onClick={() => {
+                setBusy(true);
+                setError(null);
+                void deleteRule({ ruleId: rule._id })
+                  .catch((e) =>
+                    setError(
+                      e instanceof Error
+                        ? e.message
+                        : "Couldn't delete the rule.",
+                    ),
+                  )
+                  .finally(() => setBusy(false));
+              }}
+            >
+              <LuTrash2 />
+            </IconButton>
           </Flex>
-          <Text fontSize="sm" color="fg.muted">
-            Every {weekdayLabel(rule.weekday)} at {rule.startTime}
-          </Text>
-        </Box>
-        <Flex gap="2" flexShrink="0">
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={busy}
-            onClick={() => {
-              setBusy(true);
-              setError(null);
-              void setEnabled({
-                ruleId: rule._id,
-                enabled: !rule.enabled,
-              })
-                .catch((e) =>
-                  setError(
-                    e instanceof Error ? e.message : "Couldn't update the rule.",
-                  ),
-                )
-                .finally(() => setBusy(false));
-            }}
-          >
-            {rule.enabled ? "Disable" : "Enable"}
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            colorPalette="red"
-            disabled={busy}
-            onClick={() => {
-              setBusy(true);
-              setError(null);
-              void deleteRule({ ruleId: rule._id })
-                .catch((e) =>
-                  setError(
-                    e instanceof Error ? e.message : "Couldn't delete the rule.",
-                  ),
-                )
-                .finally(() => setBusy(false));
-            }}
-          >
-            Delete
-          </Button>
         </Flex>
-      </Flex>
-      <RuleRunLog runs={runs} />
-      {error && (
-        <Text fontSize="sm" color="red.600">
-          {error}
-        </Text>
-      )}
-    </Stack>
+        <RuleRunLog runs={runs} />
+        {error && (
+          <Alert.Root status="error" size="sm">
+            <Alert.Indicator />
+            <Alert.Content>
+              <Alert.Description>{error}</Alert.Description>
+            </Alert.Content>
+          </Alert.Root>
+        )}
+      </Card.Body>
+    </Card.Root>
   );
 }
 
@@ -164,30 +173,40 @@ export function AutoBookRules() {
   const rules = useQuery(api.autoBookRules.listMine);
 
   return (
-    <Stack gap="3">
-      <Box>
+    <Stack gap="6">
+      <Stack gap="1">
         <Heading size="md">Auto-book rules</Heading>
-        <Text color="fg.muted" fontSize="sm" mt="1">
+        <Text color="fg.muted" fontSize="sm">
           Standing weekly instructions — the day before, each enabled rule books
           its class. Disabling or deleting a rule stops future bookings but does{" "}
           <Text as="span" fontWeight="medium">
             not
           </Text>{" "}
-          cancel a booking already placed; the pool's confirmation email holds the
-          only cancel link.
+          cancel a booking already placed; the pool&apos;s confirmation email
+          holds the only cancel link.
         </Text>
-      </Box>
+      </Stack>
 
       {rules === undefined ? (
         <Flex justify="center" py="6">
           <Spinner />
         </Flex>
       ) : rules.length === 0 ? (
-        <Text color="fg.muted" fontSize="sm">
-          No auto-book rules yet. Open a class and choose “Auto-book weekly”.
-        </Text>
+        <EmptyState.Root>
+          <EmptyState.Content>
+            <EmptyState.Indicator>
+              <LuRepeat2 />
+            </EmptyState.Indicator>
+            <Stack gap="1" textAlign="center">
+              <EmptyState.Title>No auto-book rules yet</EmptyState.Title>
+              <EmptyState.Description>
+                Open a class and choose “Auto-book weekly”.
+              </EmptyState.Description>
+            </Stack>
+          </EmptyState.Content>
+        </EmptyState.Root>
       ) : (
-        <Stack gap="2">
+        <Stack gap="3">
           {rules.map((rule) => (
             <RuleRow key={rule._id} rule={rule} />
           ))}
