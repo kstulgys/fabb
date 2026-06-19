@@ -46,7 +46,7 @@ crons.cron(
  * The booking→Training-log conversion cron (issue 10). Hourly, it turns each
  * completed Booking — a held spot (`registered`/`already`) whose class end time
  * has passed (Europe/Vilnius) — into exactly one Training log; see
- * {@link internal.trainingLogs.convertCompletedBookings}. Hourly matches the
+ * {@link internal.attendance.convertCompletedBookings}. Hourly matches the
  * schedule-refresh cadence and converts each finished class well within the
  * week it stays cached. The conversion is idempotent (dedupe on `bookingId`),
  * so the cadence affects only promptness, never correctness.
@@ -54,7 +54,7 @@ crons.cron(
 crons.interval(
   "convert completed bookings",
   { hours: 1 },
-  internal.trainingLogs.convertCompletedBookings,
+  internal.attendance.convertCompletedBookings,
   {},
 );
 

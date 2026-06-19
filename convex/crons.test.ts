@@ -39,7 +39,7 @@ test("an hourly conversion cron is registered against convertCompletedBookings",
   expect(job).toBeDefined();
   expect(job.schedule).toEqual({ type: "interval", hours: 1 });
   expect(job.name).toBe(
-    getFunctionName(internal.trainingLogs.convertCompletedBookings),
+    getFunctionName(internal.attendance.convertCompletedBookings),
   );
   expect(job.args).toEqual([{}]);
 });
