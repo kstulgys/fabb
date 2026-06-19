@@ -85,3 +85,19 @@ export function validatePoolDetails(input: PoolDetails): PoolDetailsValidation {
   }
   return { ok: true, value };
 }
+
+/**
+ * Whether a User's Pool details are complete: `detailsComplete === true` AND a
+ * `poolDetails` object present. The SINGLE source for the "may this account
+ * book?" completeness check — the three booking gates
+ * ({@link ../poolDetailsOps} `requirePoolDetails` / `requirePoolDetailsForAction`
+ * and `autoBook`'s `ruleContext`) all narrow through it, differing only in what
+ * they do when it fails (throw vs return a `no_details` verdict). The param is
+ * permissive so it accepts both a raw `users` doc and the `MyPoolDetails` query
+ * shape the action gate reads.
+ */
+export function hasCompleteDetails(
+  user: { detailsComplete?: boolean; poolDetails?: PoolDetails | null } | null,
+): user is { detailsComplete: true; poolDetails: PoolDetails } {
+  return user?.detailsComplete === true && user.poolDetails != null;
+}

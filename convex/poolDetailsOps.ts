@@ -6,6 +6,7 @@ import { mutation, query } from "./_generated/server";
 import {
   POOL_DETAILS_INCOMPLETE_MESSAGE,
   type PoolDetails,
+  hasCompleteDetails,
   poolDetailsValidator,
   validatePoolDetails,
 } from "./poolDetails";
@@ -93,7 +94,7 @@ export async function requirePoolDetails(
 ): Promise<{ userId: Id<"users">; poolDetails: PoolDetails }> {
   const userId = await requireUserId(ctx);
   const user = await ctx.db.get("users", userId);
-  if (!user?.detailsComplete || !user.poolDetails) {
+  if (!hasCompleteDetails(user)) {
     throw new Error(POOL_DETAILS_INCOMPLETE_MESSAGE);
   }
   return { userId, poolDetails: user.poolDetails };
@@ -115,7 +116,7 @@ export async function requirePoolDetailsForAction(
     api.poolDetailsOps.myPoolDetails,
     {},
   );
-  if (!details.detailsComplete || details.poolDetails === null) {
+  if (!hasCompleteDetails(details)) {
     throw new Error(POOL_DETAILS_INCOMPLETE_MESSAGE);
   }
   return { userId, poolDetails: details.poolDetails };

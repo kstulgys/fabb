@@ -6,10 +6,11 @@ import {
   internalQuery,
   query,
 } from "./_generated/server";
+import { autoBookable } from "./bookingDecision";
 import { attemptOutcomeValidator } from "./bookingStatus";
-import type { PoolDetails } from "./poolDetails";
+import { hasCompleteDetails, type PoolDetails } from "./poolDetails";
 import { requireUserId } from "./users";
-import { classStatus, isoWeekday, tomorrowDate } from "./week";
+import { isoWeekday, tomorrowDate } from "./week";
 
 /**
  * The day-before AutoBook cron and its supporting reads/writes (issue 08).
@@ -102,7 +103,7 @@ export const ruleContext = internalQuery({
     const userId = rule.userId;
 
     const owner = await ctx.db.get("users", userId);
-    if (!owner?.detailsComplete || !owner.poolDetails) {
+    if (!hasCompleteDetails(owner)) {
       return { kind: "no_details", userId };
     }
 
@@ -133,11 +134,8 @@ export const ruleContext = internalQuery({
 
     // Stop once the start time has passed (issue 08 retry-stop). For tomorrow's
     // class at fire time this is always `upcoming`; it only bites on a late retry.
-    const { status } = classStatus(
-      cls,
-      now !== undefined ? new Date(now) : new Date(),
-    );
-    if (status !== "upcoming") return { kind: "started", userId };
+    const at = now !== undefined ? new Date(now) : new Date();
+    if (!autoBookable(cls, at)) return { kind: "started", userId };
 
     return { kind: "ready", userId, pid: cls.pid, poolDetails: owner.poolDetails };
   },

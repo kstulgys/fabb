@@ -4,11 +4,11 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { action, type ActionCtx } from "./_generated/server";
+import { manualBookable } from "./bookingDecision";
 import type { BookingStatus } from "./bookingStatus";
 import { poolGateway } from "./pool/gateway";
 import type { PoolDetails } from "./poolDetails";
 import { requirePoolDetailsForAction } from "./poolDetailsOps";
-import { classStatus } from "./week";
 
 /**
  * The per-Booking run-log line for each outcome. Kept human and terse — this is
@@ -65,7 +65,7 @@ export async function bookAndRecord(
  * PHP session cookie across four requests and posts a multipart body. The flow:
  *  1. resolve + authorise the caller and require complete Pool details — the
  *     booking gate (issue 05) refuses otherwise;
- *  2. refuse a class that has already finished (`classStatus().bookable`);
+ *  2. refuse a class that has already finished ({@link manualBookable});
  *  3. submit the booking through the gateway — a fake in tests, NEVER the real
  *     network — and let it classify the response;
  *  4. write a `source: 'now'` Booking row with the status + a run-log entry;
@@ -84,7 +84,7 @@ export const bookNow = action({
     if (cls === null) {
       throw new Error("That class is not in this week's schedule.");
     }
-    if (!classStatus(cls, new Date()).bookable) {
+    if (!manualBookable(cls, new Date())) {
       throw new Error("This class has finished — it can no longer be booked.");
     }
 
