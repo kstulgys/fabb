@@ -1,3 +1,4 @@
+import { fromColumns, midpoint } from "./calories";
 import { isoWeekday } from "./week";
 
 /**
@@ -57,20 +58,6 @@ function addDays(date: string, days: number): string {
 }
 
 /**
- * The midpoint of a log's Calorie RANGE, or `null` when either bound is absent.
- * `null` means "exclude from the calorie total" — NOT zero, which would dilute
- * an average and misrepresent an unknown as none. A log with only one bound is
- * treated as absent (Calories are stored all-or-nothing; see `caloriePair`).
- */
-export function calorieMidpoint(log: {
-  kcalMin?: number;
-  kcalMax?: number;
-}): number | null {
-  if (log.kcalMin === undefined || log.kcalMax === undefined) return null;
-  return (log.kcalMin + log.kcalMax) / 2;
-}
-
-/**
  * The Monday (ISO date) of the Mon–Sun week containing `date`. A civil date's
  * weekday is timezone-independent (see {@link isoWeekday}), so this is pure
  * string arithmetic — no Vilnius conversion — and buckets a Sunday with its
@@ -114,7 +101,7 @@ export function periodTotals(
   for (const log of logs) {
     if (!inPeriod(log.date, period, today)) continue;
     classes++;
-    const mid = calorieMidpoint(log);
+    const mid = midpoint(fromColumns(log));
     if (mid !== null) calories += mid;
   }
   return { classes, calories };
@@ -131,7 +118,7 @@ export function weeklySeries(logs: StatLog[]): WeekBucket[] {
     const week = weekStart(log.date);
     const bucket = byWeek.get(week) ?? { week, classes: 0, calories: 0 };
     bucket.classes++;
-    const mid = calorieMidpoint(log);
+    const mid = midpoint(fromColumns(log));
     if (mid !== null) bucket.calories += mid;
     byWeek.set(week, bucket);
   }

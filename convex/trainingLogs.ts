@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { internalMutation, mutation, query } from "./_generated/server";
+import { fromColumns, requirePair, toColumns } from "./calories";
 import { requireUserId } from "./users";
 import { classStatus, weekDatesFor } from "./week";
 
@@ -19,26 +20,6 @@ import { classStatus, weekDatesFor } from "./week";
 /** Cap on the history read: bounded per the Convex query guidelines rather than
  * an unbounded `.collect()`, since a User's logs accrue without limit. */
 const HISTORY_LIMIT = 200;
-
-/**
- * Validate Calories as an all-or-nothing RANGE: a pool calorie figure is a
- * `(kcalMin, kcalMax)` pair (see constraints), so a lone bound is meaningless
- * and would corrupt the midpoint a later slice averages. Returns the pair to
- * spread into a log (both fields, or neither when Calories are left blank).
- */
-function caloriePair(
-  kcalMin: number | undefined,
-  kcalMax: number | undefined,
-): { kcalMin?: number; kcalMax?: number } {
-  const hasMin = kcalMin !== undefined;
-  const hasMax = kcalMax !== undefined;
-  if (hasMin !== hasMax) {
-    throw new Error(
-      "Enter both a minimum and maximum calorie figure, or leave both blank.",
-    );
-  }
-  return hasMin ? { kcalMin, kcalMax } : {};
-}
 
 /**
  * Load a log and assert the caller owns it. Returns the log, or throws
@@ -82,7 +63,7 @@ export const addFromClass = mutation({
       className: cls.name,
       date: cls.date,
       intensity: cls.intensity,
-      ...caloriePair(cls.kcalMin, cls.kcalMax),
+      ...toColumns(requirePair(cls.kcalMin, cls.kcalMax)),
       attended: true,
     });
   },
@@ -118,7 +99,7 @@ export const addManual = mutation({
       className: name,
       date,
       intensity: intensity ?? 0,
-      ...caloriePair(kcalMin, kcalMax),
+      ...toColumns(requirePair(kcalMin, kcalMax)),
       attended: true,
     });
   },
@@ -155,7 +136,7 @@ export const editLog = mutation({
       className: name,
       date,
       intensity: intensity ?? log.intensity,
-      ...caloriePair(kcalMin, kcalMax),
+      ...toColumns(requirePair(kcalMin, kcalMax)),
       attended: log.attended,
       ...(log.bookingId !== undefined ? { bookingId: log.bookingId } : {}),
     });
@@ -279,7 +260,7 @@ export const convertCompletedBookings = internalMutation({
           className: cls.name,
           date: cls.date,
           intensity: cls.intensity,
-          ...caloriePair(cls.kcalMin, cls.kcalMax),
+          ...toColumns(fromColumns(cls)),
           attended: true,
           bookingId: booking._id,
         });

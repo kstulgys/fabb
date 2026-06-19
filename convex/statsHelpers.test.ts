@@ -1,6 +1,5 @@
 import { describe, expect, test } from "vitest";
 import {
-  calorieMidpoint,
   currentStreak,
   inPeriod,
   periodTotals,
@@ -18,18 +17,6 @@ const TODAY = "2026-06-18";
 function log(date: string, over: Partial<StatLog> = {}): StatLog {
   return { date, className: over.className ?? "Aqua", ...over };
 }
-
-describe("calorieMidpoint", () => {
-  test("averages a full Calorie range", () => {
-    expect(calorieMidpoint({ kcalMin: 300, kcalMax: 450 })).toBe(375);
-  });
-
-  test("is null when either bound is missing — never zero", () => {
-    expect(calorieMidpoint({})).toBeNull();
-    expect(calorieMidpoint({ kcalMin: 300 })).toBeNull();
-    expect(calorieMidpoint({ kcalMax: 450 })).toBeNull();
-  });
-});
 
 describe("weekStart (Vilnius week boundaries)", () => {
   test("a Monday is its own week start", () => {

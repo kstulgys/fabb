@@ -1,5 +1,6 @@
 import { type Infer, v } from "convex/values";
 import { internalMutation, query } from "./_generated/server";
+import { caloriesColumns } from "./calories";
 import { requireUserId } from "./users";
 import { WEEKDAY_LABELS, weekDatesFor } from "./week";
 
@@ -14,8 +15,7 @@ export const classRecord = v.object({
   pid: v.string(),
   name: v.string(),
   intensity: v.number(),
-  kcalMin: v.optional(v.number()),
-  kcalMax: v.optional(v.number()),
+  ...caloriesColumns,
   durationMin: v.optional(v.number()),
 });
 

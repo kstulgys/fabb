@@ -20,6 +20,7 @@ import { useMutation, useQuery } from "convex/react";
 import { type ChangeEvent, useState } from "react";
 import { api } from "../../../convex/_generated/api";
 import type { Doc } from "../../../convex/_generated/dataModel";
+import { format, fromColumns } from "../../../convex/calories";
 
 /** The fields shared by the typed-add and edit forms, held as raw input text. */
 type FormValues = {
@@ -174,11 +175,7 @@ function ClassPreview({ cls }: { cls: Doc<"classes"> }) {
       <Flex gap="4" mt="1" fontSize="sm" color="fg.muted" wrap="wrap">
         <Text>{cls.date}</Text>
         <Text color="red.500">{hearts}</Text>
-        <Text>
-          {cls.kcalMin != null && cls.kcalMax != null
-            ? `${cls.kcalMin}–${cls.kcalMax} kcal`
-            : "No published calories"}
-        </Text>
+        <Text>{format(fromColumns(cls), "No published calories")}</Text>
       </Flex>
     </Box>
   );
@@ -416,10 +413,7 @@ function LogRow({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const hearts = log.intensity > 0 ? "❤".repeat(log.intensity) : "—";
-  const kcal =
-    log.kcalMin != null && log.kcalMax != null
-      ? `${log.kcalMin}–${log.kcalMax} kcal`
-      : "—";
+  const kcal = format(fromColumns(log));
 
   return (
     <Stack borderWidth="1px" borderRadius="lg" p="3" gap="2">

@@ -17,6 +17,7 @@ import { useEffect, useState } from "react";
 import { api } from "../../../convex/_generated/api";
 import type { Doc } from "../../../convex/_generated/dataModel";
 import type { BookingStatus } from "../../../convex/bookingStatus";
+import { format, fromColumns } from "../../../convex/calories";
 import type { Availability } from "../../../convex/pool/parse";
 import {
   type ClassStatus,
@@ -346,10 +347,7 @@ function DetailContent({
   onClose: () => void;
 }) {
   const { status, bookable } = classStatus(cls, now);
-  const kcal =
-    cls.kcalMin != null && cls.kcalMax != null
-      ? `${cls.kcalMin}–${cls.kcalMax} kcal`
-      : "—";
+  const kcal = format(fromColumns(cls));
   const duration = cls.durationMin != null ? `${cls.durationMin} min` : "—";
   const hearts = cls.intensity > 0 ? "❤".repeat(cls.intensity) : "—";
 

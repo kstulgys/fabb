@@ -15,6 +15,7 @@ import type * as autoBookRules from "../autoBookRules.js";
 import type * as book from "../book.js";
 import type * as bookingStatus from "../bookingStatus.js";
 import type * as bookings from "../bookings.js";
+import type * as calories from "../calories.js";
 import type * as classes from "../classes.js";
 import type * as crons from "../crons.js";
 import type * as http from "../http.js";
@@ -43,6 +44,7 @@ declare const fullApi: ApiFromModules<{
   book: typeof book;
   bookingStatus: typeof bookingStatus;
   bookings: typeof bookings;
+  calories: typeof calories;
   classes: typeof classes;
   crons: typeof crons;
   http: typeof http;

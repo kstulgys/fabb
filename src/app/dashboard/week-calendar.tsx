@@ -5,6 +5,7 @@ import { useQuery } from "convex/react";
 import { useState } from "react";
 import { api } from "../../../convex/_generated/api";
 import type { Doc } from "../../../convex/_generated/dataModel";
+import { format, fromColumns } from "../../../convex/calories";
 import { classStatus } from "../../../convex/week";
 import { ClassDetailDialog, StatusBadge } from "./class-detail";
 
@@ -25,10 +26,7 @@ function ClassRow({
     cls.endTime && cls.endTime !== cls.startTime
       ? `${cls.startTime}–${cls.endTime}`
       : cls.startTime;
-  const kcal =
-    cls.kcalMin != null && cls.kcalMax != null
-      ? `${cls.kcalMin}–${cls.kcalMax} kcal`
-      : "—";
+  const kcal = format(fromColumns(cls));
   const duration = cls.durationMin != null ? `${cls.durationMin} min` : "—";
   const hearts = cls.intensity > 0 ? "❤".repeat(cls.intensity) : "—";
 

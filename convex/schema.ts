@@ -2,6 +2,7 @@ import { defineSchema, defineTable } from "convex/server";
 import { authTables } from "@convex-dev/auth/server";
 import { v } from "convex/values";
 import { bookingStatusValidator, attemptOutcomeValidator } from "./bookingStatus";
+import { caloriesColumns } from "./calories";
 
 /**
  * App schema.
@@ -53,9 +54,7 @@ const schema = defineSchema({
     pid: v.string(),
     name: v.string(),
     intensity: v.number(), // count of ❤ hearts
-    // Calories are a published range, absent on some classes → omitted.
-    kcalMin: v.optional(v.number()),
-    kcalMax: v.optional(v.number()),
+    ...caloriesColumns,
     durationMin: v.optional(v.number()),
   })
     .index("by_pid_and_date", ["pid", "date"])
@@ -155,9 +154,7 @@ const schema = defineSchema({
     className: v.string(),
     date: v.string(), // ISO "YYYY-MM-DD" (Europe/Vilnius)
     intensity: v.number(), // count of ❤ hearts (0 = unknown / none)
-    // Calories are a published range, absent on some classes → omitted.
-    kcalMin: v.optional(v.number()),
-    kcalMax: v.optional(v.number()),
+    ...caloriesColumns,
     attended: v.boolean(),
     // Set only by the booking-sourced path (issue 10); a manual log omits it.
     bookingId: v.optional(v.id("bookings")),
