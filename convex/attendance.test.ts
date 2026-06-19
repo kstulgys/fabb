@@ -3,6 +3,7 @@ import { convexTest, type TestConvex } from "convex-test";
 import { describe, expect, test } from "vitest";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import type { BookingStatus } from "./bookingStatus";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
@@ -55,7 +56,7 @@ function seedBooking(
     pid: string;
     date: string;
     source: "rule" | "now";
-    status: "registered" | "already" | "full" | "error";
+    status: BookingStatus;
   }> = {},
 ): Promise<Id<"bookings">> {
   const status = over.status ?? "registered";
@@ -180,6 +181,30 @@ describe("convertCompletedBookings — booking → Training log", () => {
     const t = convexTest(schema, modules);
     const userId = await seedUser(t);
     await seedClass(t, { kcalMin: undefined, kcalMax: undefined });
+    await seedBooking(t, userId, { status: "registered" });
+
+    const res = await t.mutation(
+      internal.attendance.convertCompletedBookings,
+      { now: AFTER_CLASS },
+    );
+    expect(res).toEqual({ converted: 1 });
+    const logs = await t
+      .withIdentity({ subject: userId })
+      .query(api.trainingLogs.listMine, {});
+    expect(logs).toHaveLength(1);
+    expect(logs[0].attended).toBe(true);
+    expect(logs[0].kcalMin).toBeUndefined();
+    expect(logs[0].kcalMax).toBeUndefined();
+  });
+
+  test("a finished class with a lone Calorie bound converts without throwing (tolerant trusted read)", async () => {
+    const t = convexTest(schema, modules);
+    const userId = await seedUser(t);
+    // A corrupt LONE BOUND (kcalMin set, kcalMax absent). The conversion reads
+    // class Calories TOLERANTLY via toColumns(fromColumns(cls)), so a lone bound
+    // coerces to absent instead of throwing — pinning C1's tolerant trusted read
+    // against a future revert to a strict (throwing) read at this seam.
+    await seedClass(t, { kcalMin: 300, kcalMax: undefined });
     await seedBooking(t, userId, { status: "registered" });
 
     const res = await t.mutation(
