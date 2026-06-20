@@ -30,12 +30,14 @@ import {
   LuDumbbell,
   LuPencil,
   LuPlus,
-  LuTrash2,
   LuX,
 } from "react-icons/lu";
 import { api } from "../../../convex/_generated/api";
 import type { Doc } from "../../../convex/_generated/dataModel";
-import { format, fromColumns } from "../../../convex/calories";
+import { format, fromColumns, requirePair } from "../../../convex/calories";
+import { ConfirmDeleteButton } from "../confirm-delete-button";
+import { Intensity } from "./intensity";
+import { CardRowsSkeleton } from "./skeletons";
 
 /** The fields shared by the typed-add and edit forms, held as raw input text. */
 type FormValues = {
@@ -71,23 +73,6 @@ function parseNum(s: string): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
-/** Intensity rendered as filled hearts in a theme-aware status-red; a zero reads
- * as a muted dash so an unrated class never shows a red mark. */
-function IntensityHearts({ value }: { value: number }) {
-  if (value <= 0) {
-    return (
-      <Text as="span" color="fg.subtle">
-        —
-      </Text>
-    );
-  }
-  return (
-    <Text as="span" color="red.solid" aria-label={`Intensity ${value} of 5`}>
-      {"❤".repeat(value)}
-    </Text>
-  );
-}
-
 /**
  * The typed-detail form, reused for both the "Type details" add path and the
  * edit dialog. It owns only its input text + the in-flight/error state; the
@@ -107,21 +92,54 @@ function ManualLogForm({
   const [values, setValues] = useState<FormValues>(initial);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Inline field error, mirroring the server's own pure rules so the message
+  // matches its rejection (the server stays the source of truth).
+  const [invalid, setInvalid] = useState<{
+    field: keyof FormValues;
+    error: string;
+  } | null>(null);
 
   const set =
     (key: keyof FormValues) =>
-    (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+    (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
       setValues((v) => ({ ...v, [key]: e.target.value }));
+      setInvalid((cur) => (cur?.field === key ? null : cur));
+    };
 
   const submit = () => {
+    const className = values.className.trim();
+    const date = values.date.trim();
+    if (!className || !date) {
+      setInvalid({
+        field: className ? "date" : "className",
+        error: "A class name and date are required.",
+      });
+      return;
+    }
+    const kcalMin = parseNum(values.kcalMin);
+    const kcalMax = parseNum(values.kcalMax);
+    try {
+      // The shared Calorie-range invariant: both bounds or neither (calories.ts).
+      requirePair(kcalMin, kcalMax);
+    } catch (e) {
+      setInvalid({
+        field: kcalMin === undefined ? "kcalMin" : "kcalMax",
+        error:
+          e instanceof Error
+            ? e.message
+            : "Enter both calorie figures, or leave both blank.",
+      });
+      return;
+    }
+    setInvalid(null);
     setBusy(true);
     setError(null);
     onSubmit({
-      className: values.className,
-      date: values.date,
+      className,
+      date,
       intensity: parseNum(values.intensity),
-      kcalMin: parseNum(values.kcalMin),
-      kcalMax: parseNum(values.kcalMax),
+      kcalMin,
+      kcalMax,
     })
       .catch((e) =>
         setError(e instanceof Error ? e.message : "Couldn't save the log."),
@@ -131,34 +149,44 @@ function ManualLogForm({
 
   return (
     <Stack gap="4" pt="2">
-      <Field.Root required>
+      <Field.Root required invalid={invalid?.field === "className"}>
         <Field.Label>Class name</Field.Label>
         <Input
           value={values.className}
           onChange={set("className")}
-          placeholder="e.g. Aqua aerobics"
+          placeholder="e.g. Funkcinė rato"
         />
+        <Field.ErrorText>
+          {invalid?.field === "className" ? invalid.error : null}
+        </Field.ErrorText>
       </Field.Root>
-      <Field.Root required>
+      <Field.Root required invalid={invalid?.field === "date"}>
         <Field.Label>Date</Field.Label>
         <Input type="date" value={values.date} onChange={set("date")} />
+        <Field.ErrorText>
+          {invalid?.field === "date" ? invalid.error : null}
+        </Field.ErrorText>
       </Field.Root>
       <Field.Root>
         <Field.Label>Intensity (hearts)</Field.Label>
         <NativeSelect.Root>
           <NativeSelect.Field value={values.intensity} onChange={set("intensity")}>
             <option value="0">Not rated</option>
-            <option value="1">❤</option>
-            <option value="2">❤❤</option>
-            <option value="3">❤❤❤</option>
-            <option value="4">❤❤❤❤</option>
-            <option value="5">❤❤❤❤❤</option>
+            <option value="1">1 heart</option>
+            <option value="2">2 hearts</option>
+            <option value="3">3 hearts</option>
+            <option value="4">4 hearts</option>
+            <option value="5">5 hearts</option>
           </NativeSelect.Field>
           <NativeSelect.Indicator />
         </NativeSelect.Root>
       </Field.Root>
-      <Flex gap="3" direction={{ base: "column", sm: "row" }}>
-        <Field.Root>
+      <Flex
+        gap="3"
+        direction={{ base: "column", sm: "row" }}
+        align={{ sm: "flex-start" }}
+      >
+        <Field.Root invalid={invalid?.field === "kcalMin"}>
           <Field.Label>Calories min</Field.Label>
           <Input
             type="number"
@@ -167,8 +195,11 @@ function ManualLogForm({
             onChange={set("kcalMin")}
             placeholder="optional"
           />
+          <Field.ErrorText>
+            {invalid?.field === "kcalMin" ? invalid.error : null}
+          </Field.ErrorText>
         </Field.Root>
-        <Field.Root>
+        <Field.Root invalid={invalid?.field === "kcalMax"}>
           <Field.Label>Calories max</Field.Label>
           <Input
             type="number"
@@ -177,6 +208,9 @@ function ManualLogForm({
             onChange={set("kcalMax")}
             placeholder="optional"
           />
+          <Field.ErrorText>
+            {invalid?.field === "kcalMax" ? invalid.error : null}
+          </Field.ErrorText>
         </Field.Root>
       </Flex>
       <Text fontSize="xs" color="fg.muted">
@@ -218,7 +252,7 @@ function ClassPreview({ cls }: { cls: Doc<"classes"> }) {
           <DataList.Item>
             <DataList.ItemLabel>Intensity</DataList.ItemLabel>
             <DataList.ItemValue>
-              <IntensityHearts value={cls.intensity} />
+              <Intensity value={cls.intensity} />
             </DataList.ItemValue>
           </DataList.Item>
           <DataList.Item>
@@ -501,7 +535,7 @@ function LogRow({
                 colorPalette={log.attended ? "green" : "gray"}
                 variant="subtle"
               >
-                {log.attended ? "Attended" : "Missed"}
+                {log.attended ? "Attended" : "Didn't go"}
               </Badge>
             </Flex>
             <Flex
@@ -512,7 +546,7 @@ function LogRow({
               wrap="wrap"
             >
               <Text>{log.date}</Text>
-              <IntensityHearts value={log.intensity} />
+              <Intensity value={log.intensity} />
               <Text>{kcal}</Text>
             </Flex>
           </Stack>
@@ -558,13 +592,17 @@ function LogRow({
             >
               <LuPencil />
             </IconButton>
-            <IconButton
-              aria-label="Delete log"
-              size="sm"
-              variant="ghost"
-              colorPalette="red"
-              disabled={busy}
-              onClick={() => {
+            <ConfirmDeleteButton
+              label="Delete log"
+              title="Delete this log?"
+              description={
+                <>
+                  Removes “{log.className}” on {log.date} from your training
+                  history. This can’t be undone.
+                </>
+              }
+              busy={busy}
+              onConfirm={() => {
                 setBusy(true);
                 setError(null);
                 void deleteLog({ logId: log._id })
@@ -577,9 +615,7 @@ function LogRow({
                   )
                   .finally(() => setBusy(false));
               }}
-            >
-              <LuTrash2 />
-            </IconButton>
+            />
           </Flex>
         </Flex>
         {error && (
@@ -616,7 +652,7 @@ export function TrainingLog() {
         <Stack gap="1">
           <Heading size="md">Training log</Heading>
           <Text color="fg.muted" fontSize="sm">
-            Record a class you attended — pick one from this week or type the
+            Log a class you attended — pick one from this week or type the
             details of a past class. Calories are optional.
           </Text>
         </Stack>
@@ -630,9 +666,7 @@ export function TrainingLog() {
       </Flex>
 
       {logs === undefined ? (
-        <Flex justify="center" py="6">
-          <Spinner />
-        </Flex>
+        <CardRowsSkeleton />
       ) : logs.length === 0 ? (
         <EmptyState.Root>
           <EmptyState.Content>
@@ -641,7 +675,7 @@ export function TrainingLog() {
             </EmptyState.Indicator>
             <EmptyState.Title>No training logs yet</EmptyState.Title>
             <EmptyState.Description>
-              Add one to start your history.
+              Log a class you attended and your training history starts here.
             </EmptyState.Description>
           </EmptyState.Content>
         </EmptyState.Root>

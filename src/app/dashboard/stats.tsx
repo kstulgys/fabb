@@ -2,20 +2,22 @@
 
 import { Chart, useChart } from "@chakra-ui/charts";
 import {
+  Box,
   Card,
+  chakra,
   EmptyState,
   Flex,
   Heading,
+  HStack,
+  Icon,
   SegmentGroup,
   SimpleGrid,
-  Spinner,
   Stack,
-  Stat,
   Text,
 } from "@chakra-ui/react";
 import { useQuery } from "convex/react";
 import { useState } from "react";
-import { LuChartColumn } from "react-icons/lu";
+import { LuChartColumn, LuFlame } from "react-icons/lu";
 import {
   Bar,
   BarChart,
@@ -27,6 +29,7 @@ import {
   YAxis,
 } from "recharts";
 import { api } from "../../../convex/_generated/api";
+import { StatsSkeleton } from "./skeletons";
 
 /** The three totals scopes, matching `stats.summary`'s `period` arg. */
 type Period = "week" | "month" | "all";
@@ -37,18 +40,75 @@ const PERIOD_LABELS: Record<Period, string> = {
   all: "All time",
 };
 
-/** One headline figure. Three lockstep call sites (classes / calories / streak)
- * share this Stat-in-Card shell so they stay visually identical. */
-function StatCard({ label, value }: { label: string; value: string }) {
+/** The period headline as a single teal-forward "scoreboard": the classes count
+ * is the hero figure, with the streak (momentum, flame) and calories (energy) as
+ * role-differentiated supporting stats. This is the one surface DESIGN.md
+ * sanctions to go teal-forward — the brand's "raise your voice" moment — kept
+ * honest: real numbers, no gamification. All text is `teal.fg` on `teal.subtle`
+ * (~7:1 light / ~11:1 dark), so the commitment never costs legibility. */
+function Scoreboard({
+  periodLabel,
+  classes,
+  calories,
+  streak,
+}: {
+  periodLabel: string;
+  classes: number;
+  calories: number;
+  streak: number;
+}) {
   return (
-    <Card.Root variant="elevated">
-      <Card.Body>
-        <Stat.Root>
-          <Stat.Label>{label}</Stat.Label>
-          <Stat.ValueText fontSize="3xl">{value}</Stat.ValueText>
-        </Stat.Root>
-      </Card.Body>
-    </Card.Root>
+    <Box bg="teal.subtle" color="teal.fg" rounded="lg" p={{ base: "5", md: "6" }}>
+      <Flex
+        direction={{ base: "column", sm: "row" }}
+        justify="space-between"
+        align={{ base: "stretch", sm: "flex-end" }}
+        gap={{ base: "5", sm: "6" }}
+      >
+        <Stack gap="1">
+          <Text fontSize="sm" fontWeight="medium">
+            {periodLabel}
+          </Text>
+          <Flex align="baseline" gap="2">
+            <Text
+              fontSize={{ base: "6xl", md: "7xl" }}
+              fontWeight="bold"
+              lineHeight="0.9"
+              letterSpacing="tight"
+            >
+              {classes}
+            </Text>
+            <Text fontSize="lg" fontWeight="medium">
+              {classes === 1 ? "class" : "classes"}
+            </Text>
+          </Flex>
+        </Stack>
+
+        <HStack gap="6" align="flex-end" pb={{ sm: "2" }}>
+          <Stack gap="0.5">
+            <HStack gap="1.5">
+              <Icon boxSize="4">
+                <LuFlame />
+              </Icon>
+              <Text fontSize="2xl" fontWeight="bold" lineHeight="1">
+                {streak}
+              </Text>
+            </HStack>
+            <Text fontSize="xs" fontWeight="medium">
+              week streak
+            </Text>
+          </Stack>
+          <Stack gap="0.5">
+            <Text fontSize="2xl" fontWeight="bold" lineHeight="1">
+              {calories.toLocaleString()}
+            </Text>
+            <Text fontSize="xs" fontWeight="medium">
+              calories
+            </Text>
+          </Stack>
+        </HStack>
+      </Flex>
+    </Box>
   );
 }
 
@@ -67,6 +127,39 @@ function ChartCard({
       </Card.Header>
       <Card.Body pt="0">{children}</Card.Body>
     </Card.Root>
+  );
+}
+
+/** A screen-reader-only data table mirroring a chart, so the figures aren't
+ * locked inside an SVG. The chart stays the visual; this is its text equivalent
+ * for assistive tech. */
+function SrChartTable({
+  caption,
+  head,
+  rows,
+}: {
+  caption: string;
+  head: readonly [string, string];
+  rows: ReadonlyArray<readonly [string, string | number]>;
+}) {
+  return (
+    <chakra.table srOnly>
+      <chakra.caption>{caption}</chakra.caption>
+      <chakra.thead>
+        <chakra.tr>
+          <chakra.th scope="col">{head[0]}</chakra.th>
+          <chakra.th scope="col">{head[1]}</chakra.th>
+        </chakra.tr>
+      </chakra.thead>
+      <chakra.tbody>
+        {rows.map(([k, v]) => (
+          <chakra.tr key={String(k)}>
+            <chakra.th scope="row">{k}</chakra.th>
+            <chakra.td>{v}</chakra.td>
+          </chakra.tr>
+        ))}
+      </chakra.tbody>
+    </chakra.table>
   );
 }
 
@@ -121,23 +214,22 @@ export function Stats() {
       </Stack>
 
       {summary === undefined ? (
-        <Flex justify="center" py="6">
-          <Spinner />
-        </Flex>
+        <StatsSkeleton />
       ) : topTypes.length === 0 ? (
         <EmptyState.Root>
           <EmptyState.Content>
             <EmptyState.Indicator>
               <LuChartColumn />
             </EmptyState.Indicator>
-            <EmptyState.Title>No attended classes yet</EmptyState.Title>
+            <EmptyState.Title>No stats yet</EmptyState.Title>
             <EmptyState.Description>
-              Your stats appear once you log a class you went to.
+              Your totals, streak, and trends appear once you log a class you
+              attended.
             </EmptyState.Description>
           </EmptyState.Content>
         </EmptyState.Root>
       ) : (
-        <Stack gap="6">
+        <Stack gap={{ base: "4", md: "5" }}>
           <SegmentGroup.Root
             value={period}
             onValueChange={(e) => setPeriod(e.value as Period)}
@@ -159,25 +251,24 @@ export function Stats() {
             ))}
           </SegmentGroup.Root>
 
-          <SimpleGrid columns={{ base: 1, sm: 3 }} gap="4">
-            <StatCard
-              label={`Classes (${PERIOD_LABELS[period].toLowerCase()})`}
-              value={String(summary.totals.classes)}
-            />
-            <StatCard
-              label={`Calories (${PERIOD_LABELS[period].toLowerCase()})`}
-              value={Math.round(summary.totals.calories).toLocaleString()}
-            />
-            <StatCard
-              label="Current streak"
-              value={
-                summary.streak === 1 ? "1 week" : `${summary.streak} weeks`
-              }
-            />
-          </SimpleGrid>
+          <Scoreboard
+            periodLabel={PERIOD_LABELS[period]}
+            classes={summary.totals.classes}
+            calories={Math.round(summary.totals.calories)}
+            streak={summary.streak}
+          />
 
-          <SimpleGrid columns={{ base: 1, md: 2 }} gap="4">
+          <SimpleGrid
+            columns={{ base: 1, md: 2 }}
+            gap="5"
+            mt={{ base: "3", md: "5" }}
+          >
             <ChartCard title="Calories over time">
+              <SrChartTable
+                caption="Calories over time, by week"
+                head={["Week", "Calories"]}
+                rows={caloriesData.map((d) => [d.week, d.calories])}
+              />
               <Chart.Root maxH="56" chart={caloriesChart}>
                 <LineChart data={caloriesChart.data} responsive>
                   <CartesianGrid
@@ -213,6 +304,11 @@ export function Stats() {
             </ChartCard>
 
             <ChartCard title="Classes per week">
+              <SrChartTable
+                caption="Classes attended, by week"
+                head={["Week", "Classes"]}
+                rows={classesData.map((d) => [d.week, d.classes])}
+              />
               <Chart.Root maxH="56" chart={classesChart}>
                 <BarChart data={classesChart.data} responsive>
                   <CartesianGrid
@@ -249,6 +345,11 @@ export function Stats() {
           </SimpleGrid>
 
           <ChartCard title="Top class types">
+            <SrChartTable
+              caption="Most-attended class types"
+              head={["Class", "Times attended"]}
+              rows={topTypes.map((t) => [t.className, t.count])}
+            />
             <Chart.Root maxH="64" chart={typesChart}>
               <BarChart data={typesChart.data} layout="vertical" responsive>
                 <CartesianGrid

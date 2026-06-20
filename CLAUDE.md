@@ -13,3 +13,14 @@ Convex agent skills for common tasks can be installed by running
 `npx convex ai-files install`.
 
 <!-- convex-ai-end -->
+
+## Design Context
+
+This is a **product** surface (app UI serves the task). Strategy, users,
+brand personality, and anti-references live in `PRODUCT.md`; the visual
+system (palette, typography, components) lives in `DESIGN.md`. Read both
+before building or changing any UI.
+
+Design principles (from `PRODUCT.md`): **Truthful by default** ·
+**Set once, forget** · **Energy without gamification** · **Thumb-first** ·
+**Glanceable progress**.

@@ -7,18 +7,19 @@ import {
   EmptyState,
   Flex,
   Heading,
-  IconButton,
-  Spinner,
+  Span,
   Stack,
   Switch,
   Text,
 } from "@chakra-ui/react";
 import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
-import { LuRepeat2, LuTrash2 } from "react-icons/lu";
+import { LuRepeat2 } from "react-icons/lu";
 import { api } from "../../../convex/_generated/api";
 import type { Doc } from "../../../convex/_generated/dataModel";
 import { weekdayLabel } from "../../../convex/week";
+import { ConfirmDeleteButton } from "../confirm-delete-button";
+import { CardRowsSkeleton } from "./skeletons";
 
 /** How each run outcome reads in the per-rule history. */
 const RUN_OUTCOME = {
@@ -60,9 +61,12 @@ function RuleRunLog({ runs }: { runs: Doc<"ruleRuns">[] | undefined }) {
             size="sm"
             variant="subtle"
             colorPalette={p.palette}
-            title={`${run.date} — ${run.message}`}
+            aria-label={`${p.label} on ${run.date}: ${run.message}`}
           >
             {p.label}
+            <Span color="fg.muted" fontWeight="normal">
+              · {run.date.slice(5)}
+            </Span>
           </Badge>
         );
       })}
@@ -127,12 +131,18 @@ function RuleRow({ rule }: { rule: Doc<"autoBookRules"> }) {
                 Auto-book {rule.nameMatch} every {weekdayLabel(rule.weekday)}
               </Switch.Label>
             </Switch.Root>
-            <IconButton
-              aria-label="Delete rule"
-              colorPalette="red"
-              variant="ghost"
-              disabled={busy}
-              onClick={() => {
+            <ConfirmDeleteButton
+              label="Delete rule"
+              title="Delete this rule?"
+              description={
+                <>
+                  Removes the weekly rule for “{rule.nameMatch}” every{" "}
+                  {weekdayLabel(rule.weekday)} at {rule.startTime}. A booking
+                  already placed for it isn’t cancelled.
+                </>
+              }
+              busy={busy}
+              onConfirm={() => {
                 setBusy(true);
                 setError(null);
                 void deleteRule({ ruleId: rule._id })
@@ -145,9 +155,7 @@ function RuleRow({ rule }: { rule: Doc<"autoBookRules"> }) {
                   )
                   .finally(() => setBusy(false));
               }}
-            >
-              <LuTrash2 />
-            </IconButton>
+            />
           </Flex>
         </Flex>
         <RuleRunLog runs={runs} />
@@ -188,9 +196,7 @@ export function AutoBookRules() {
       </Stack>
 
       {rules === undefined ? (
-        <Flex justify="center" py="6">
-          <Spinner />
-        </Flex>
+        <CardRowsSkeleton />
       ) : rules.length === 0 ? (
         <EmptyState.Root>
           <EmptyState.Content>
@@ -200,7 +206,8 @@ export function AutoBookRules() {
             <Stack gap="1" textAlign="center">
               <EmptyState.Title>No auto-book rules yet</EmptyState.Title>
               <EmptyState.Description>
-                Open a class and choose “Auto-book weekly”.
+                Open a class in the schedule and choose “Auto-book weekly” — the
+                app books it for you every week.
               </EmptyState.Description>
             </Stack>
           </EmptyState.Content>

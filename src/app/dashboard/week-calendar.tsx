@@ -8,47 +8,19 @@ import {
   HStack,
   Icon,
   Span,
-  Spinner,
   Stack,
   Text,
 } from "@chakra-ui/react";
 import { useQuery } from "convex/react";
 import { useState, type ReactNode } from "react";
-import { LuCalendarDays, LuClock, LuFlame, LuHeart } from "react-icons/lu";
+import { LuCalendarDays, LuClock, LuFlame } from "react-icons/lu";
 import { api } from "../../../convex/_generated/api";
 import type { Doc } from "../../../convex/_generated/dataModel";
 import { format, fromColumns } from "../../../convex/calories";
 import { classStatus } from "../../../convex/week";
 import { ClassDetailDialog, StatusBadge } from "./class-detail";
-
-/** A class's intensity drawn as filled hearts, token-safe under the red
- * palette (the row of glyphs carries one `aria-label` so a screen reader hears
- * the count once). No recorded intensity shows an em dash. */
-function Intensity({ value }: { value: number }) {
-  const label = `intensity ${value}`;
-  if (value <= 0) {
-    return (
-      <Span role="img" aria-label={label}>
-        —
-      </Span>
-    );
-  }
-  return (
-    <HStack
-      gap="0.5"
-      role="img"
-      aria-label={label}
-      colorPalette="red"
-      color="colorPalette.solid"
-    >
-      {Array.from({ length: value }, (_, i) => (
-        <Icon key={i} boxSize="3.5">
-          <LuHeart fill="currentColor" />
-        </Icon>
-      ))}
-    </HStack>
-  );
-}
+import { Intensity } from "./intensity";
+import { ScheduleSkeleton } from "./skeletons";
 
 /** A read-only fact in a class row: a small muted icon beside its value. */
 function Fact({ icon, value }: { icon: ReactNode; value: string }) {
@@ -145,11 +117,7 @@ export function WeekCalendar() {
   const now = new Date();
 
   if (week === undefined) {
-    return (
-      <Flex justify="center" py="10">
-        <Spinner />
-      </Flex>
-    );
+    return <ScheduleSkeleton />;
   }
 
   return (
