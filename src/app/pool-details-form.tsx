@@ -164,7 +164,7 @@ export function PoolDetailsForm({
 
             <Button
               type="submit"
-              loading={submitting}
+              disabled={submitting}
               w={{ base: "full", sm: "auto" }}
               alignSelf={{ base: "stretch", sm: "flex-start" }}
             >

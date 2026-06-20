@@ -106,7 +106,7 @@ export function AuthForm() {
               </Alert.Root>
             ) : null}
 
-            <Button type="submit" loading={submitting} w="full">
+            <Button type="submit" disabled={submitting} w="full">
               Send sign-in link
             </Button>
           </Stack>

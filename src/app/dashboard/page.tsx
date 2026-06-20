@@ -6,7 +6,6 @@ import {
   IconButton,
   Menu,
   Portal,
-  Spinner,
   Stack,
   Tabs,
   Text,
@@ -147,11 +146,7 @@ function Dashboard() {
 
   return (
     <AppShell actions={<AccountMenu email={user?.email} />}>
-      {user == null ? (
-        <Stack align="center" py="16">
-          <Spinner />
-        </Stack>
-      ) : !user.detailsComplete ? (
+      {user == null ? null : !user.detailsComplete ? (
         <Stack gap="5" maxW="md" mx="auto">
           <Stack gap="1">
             <Heading size="xl">Welcome to fabb</Heading>
