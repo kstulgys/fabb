@@ -30,6 +30,7 @@ import {
   weekdayLabel,
 } from "../../../convex/week";
 import { CompleteDetailsPrompt } from "../complete-details-prompt";
+import { Intensity } from "./intensity";
 
 const STATUS_META: Record<
   ClassStatus,
@@ -322,9 +323,8 @@ function AutoBookWeekly({ cls }: { cls: Doc<"classes"> }) {
         </Alert.Root>
       )}
       <Text fontSize="xs" color="fg.muted">
-        Books “{cls.name}” every {weekday} at {cls.startTime} from next week on.
-        Disabling or deleting the rule stops future bookings but never cancels a
-        booking already placed.
+        Books “{cls.name}” every {weekday} at {cls.startTime} from next week
+        on — disabling or deleting the rule only stops future bookings.
       </Text>
     </Stack>
   );
@@ -386,7 +386,6 @@ function DetailContent({
   const { status, bookable } = classStatus(cls, now);
   const kcal = format(fromColumns(cls));
   const duration = cls.durationMin != null ? `${cls.durationMin} min` : "—";
-  const hearts = cls.intensity > 0 ? "❤".repeat(cls.intensity) : "—";
   const time =
     cls.endTime && cls.endTime !== cls.startTime
       ? `${cls.startTime}–${cls.endTime}`
@@ -431,17 +430,15 @@ function DetailContent({
             </DataList.Item>
             <DataList.Item>
               <DataList.ItemLabel>Intensity</DataList.ItemLabel>
-              <DataList.ItemValue
-                color={cls.intensity > 0 ? "red.solid" : undefined}
-              >
-                {hearts}
+              <DataList.ItemValue>
+                <Intensity value={cls.intensity} />
               </DataList.ItemValue>
             </DataList.Item>
           </DataList.Root>
         </Stack>
       </Dialog.Body>
 
-      <Dialog.Footer flexDirection="column" alignItems="stretch" gap="5">
+      <Dialog.Footer flexDirection="column" alignItems="stretch" gap="4">
         {bookable ? (
           <BookNow key={cls._id} cls={cls} />
         ) : (

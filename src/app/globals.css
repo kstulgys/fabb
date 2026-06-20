@@ -4,3 +4,17 @@ body {
   margin: 0;
   padding: 0;
 }
+
+/* PRODUCT.md a11y: honor prefers-reduced-motion with an instant fallback.
+   Clamps all animation/transition durations to ~0 for users who request
+   reduced motion, without removing motion for everyone else. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

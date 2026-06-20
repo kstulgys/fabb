@@ -3,11 +3,17 @@
 import {
   Alert,
   Badge,
+  Button,
   Card,
+  CloseButton,
+  Dialog,
   EmptyState,
+  Field,
   Flex,
   Heading,
-  IconButton,
+  NativeSelect,
+  Portal,
+  Span,
   Spinner,
   Stack,
   Switch,
@@ -15,10 +21,12 @@ import {
 } from "@chakra-ui/react";
 import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
-import { LuRepeat2, LuTrash2 } from "react-icons/lu";
+import { LuPlus, LuRepeat2 } from "react-icons/lu";
 import { api } from "../../../convex/_generated/api";
 import type { Doc } from "../../../convex/_generated/dataModel";
 import { weekdayLabel } from "../../../convex/week";
+import { ConfirmDeleteButton } from "../confirm-delete-button";
+import { CardRowsSkeleton } from "./skeletons";
 
 /** How each run outcome reads in the per-rule history. */
 const RUN_OUTCOME = {
@@ -60,9 +68,12 @@ function RuleRunLog({ runs }: { runs: Doc<"ruleRuns">[] | undefined }) {
             size="sm"
             variant="subtle"
             colorPalette={p.palette}
-            title={`${run.date} — ${run.message}`}
+            aria-label={`${p.label} on ${run.date}: ${run.message}`}
           >
             {p.label}
+            <Span color="fg.muted" fontWeight="normal">
+              · {run.date.slice(5)}
+            </Span>
           </Badge>
         );
       })}
@@ -127,12 +138,18 @@ function RuleRow({ rule }: { rule: Doc<"autoBookRules"> }) {
                 Auto-book {rule.nameMatch} every {weekdayLabel(rule.weekday)}
               </Switch.Label>
             </Switch.Root>
-            <IconButton
-              aria-label="Delete rule"
-              colorPalette="red"
-              variant="ghost"
-              disabled={busy}
-              onClick={() => {
+            <ConfirmDeleteButton
+              label="Delete rule"
+              title="Delete this rule?"
+              description={
+                <>
+                  Removes the weekly rule for “{rule.nameMatch}” every{" "}
+                  {weekdayLabel(rule.weekday)} at {rule.startTime}. A booking
+                  already placed for it isn’t cancelled.
+                </>
+              }
+              busy={busy}
+              onConfirm={() => {
                 setBusy(true);
                 setError(null);
                 void deleteRule({ ruleId: rule._id })
@@ -145,9 +162,7 @@ function RuleRow({ rule }: { rule: Doc<"autoBookRules"> }) {
                   )
                   .finally(() => setBusy(false));
               }}
-            >
-              <LuTrash2 />
-            </IconButton>
+            />
           </Flex>
         </Flex>
         <RuleRunLog runs={runs} />
@@ -165,32 +180,185 @@ function RuleRow({ rule }: { rule: Doc<"autoBookRules"> }) {
 }
 
 /**
+ * Class-picker dialog for creating an AutoBook rule. Mounted fresh on each open
+ * so state resets. Mirrors `PickClassPanel` + `AddLogDialog` in training-log.tsx
+ * but submits to `createFromClass` instead.
+ */
+function AddRuleDialog({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
+  return (
+    <Dialog.Root
+      open={open}
+      onOpenChange={(e) => {
+        if (!e.open) onClose();
+      }}
+      placement="center"
+      size={{ base: "full", md: "lg" }}
+      motionPreset="slide-in-bottom"
+    >
+      <Portal>
+        <Dialog.Backdrop />
+        <Dialog.Positioner>
+          <Dialog.Content colorPalette="teal">
+            {open && <AddRuleBody onClose={onClose} />}
+          </Dialog.Content>
+        </Dialog.Positioner>
+      </Portal>
+    </Dialog.Root>
+  );
+}
+
+/** Body mounted only while dialog is open so queries + state reset each time. */
+function AddRuleBody({ onClose }: { onClose: () => void }) {
+  const week = useQuery(api.classes.weekClasses, {});
+  const createRule = useMutation(api.autoBookRules.createFromClass);
+  const [selected, setSelected] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const options =
+    week?.days.flatMap((day) =>
+      day.classes.map((cls) => ({
+        key: `${cls.pid}|${cls.date}`,
+        cls,
+        label: `${day.weekday} ${cls.date} · ${cls.startTime} · ${cls.name}`,
+      })),
+    ) ?? [];
+
+  const picked = options.find((o) => o.key === selected)?.cls ?? null;
+
+  const submit = () => {
+    if (picked === null) return;
+    setBusy(true);
+    setError(null);
+    createRule({ pid: picked.pid, date: picked.date })
+      .then(() => onClose())
+      .catch((e) =>
+        setError(e instanceof Error ? e.message : "Couldn't add the rule."),
+      )
+      .finally(() => setBusy(false));
+  };
+
+  return (
+    <>
+      <Dialog.Header>
+        <Dialog.Title>Add auto-book rule</Dialog.Title>
+      </Dialog.Header>
+      <Dialog.CloseTrigger asChild>
+        <CloseButton size="sm" />
+      </Dialog.CloseTrigger>
+      <Dialog.Body>
+        {week === undefined ? (
+          <Flex justify="center" py="6">
+            <Spinner />
+          </Flex>
+        ) : options.length === 0 ? (
+          <Alert.Root status="info" mt="2">
+            <Alert.Indicator />
+            <Alert.Content>
+              <Alert.Description>
+                No classes in this week&apos;s schedule — check back when the
+                schedule is published.
+              </Alert.Description>
+            </Alert.Content>
+          </Alert.Root>
+        ) : (
+          <Stack gap="4" pt="2">
+            <Field.Root>
+              <Field.Label>Class</Field.Label>
+              <NativeSelect.Root>
+                <NativeSelect.Field
+                  value={selected}
+                  onChange={(e) => setSelected(e.target.value)}
+                >
+                  <option value="">Choose a class…</option>
+                  {options.map((o) => (
+                    <option key={o.key} value={o.key}>
+                      {o.label}
+                    </option>
+                  ))}
+                </NativeSelect.Field>
+                <NativeSelect.Indicator />
+              </NativeSelect.Root>
+              <Field.HelperText>
+                The rule repeats every week on the same day and time.
+              </Field.HelperText>
+            </Field.Root>
+            <Button
+              alignSelf={{ base: "stretch", sm: "flex-start" }}
+              disabled={picked === null || busy}
+              loading={busy}
+              loadingText="Adding…"
+              onClick={submit}
+            >
+              <LuPlus /> Add rule
+            </Button>
+            {error && (
+              <Alert.Root status="error">
+                <Alert.Indicator />
+                <Alert.Content>
+                  <Alert.Description>{error}</Alert.Description>
+                </Alert.Content>
+              </Alert.Root>
+            )}
+          </Stack>
+        )}
+      </Dialog.Body>
+      <Dialog.Footer>
+        <Button variant="outline" onClick={onClose}>
+          Close
+        </Button>
+      </Dialog.Footer>
+    </>
+  );
+}
+
+/**
  * The calling User's AutoBook rules — this User only (`listMine` is scoped
  * server-side). States plainly (ADR-0001) that disabling or deleting a rule
  * stops FUTURE bookings but never cancels a Booking already placed.
  */
 export function AutoBookRules() {
   const rules = useQuery(api.autoBookRules.listMine);
+  const [adding, setAdding] = useState(false);
 
   return (
     <Stack gap="6">
-      <Stack gap="1">
-        <Heading size="md">Auto-book rules</Heading>
-        <Text color="fg.muted" fontSize="sm">
-          Standing weekly instructions — the day before, each enabled rule books
-          its class. Disabling or deleting a rule stops future bookings but does{" "}
-          <Text as="span" fontWeight="medium">
-            not
-          </Text>{" "}
-          cancel a booking already placed; the pool&apos;s confirmation email
-          holds the only cancel link.
-        </Text>
-      </Stack>
+      <Flex
+        direction={{ base: "column", md: "row" }}
+        justify="space-between"
+        align={{ md: "center" }}
+        gap="3"
+      >
+        <Stack gap="1">
+          <Heading size="md">Auto-book rules</Heading>
+          <Text color="fg.muted" fontSize="sm">
+            Standing weekly instructions — the day before, each enabled rule
+            books its class. Disabling or deleting a rule stops future bookings
+            but does{" "}
+            <Text as="span" fontWeight="medium">
+              not
+            </Text>{" "}
+            cancel a booking already placed; the pool&apos;s confirmation email
+            holds the only cancel link.
+          </Text>
+        </Stack>
+        <Button
+          w={{ base: "full", md: "auto" }}
+          flexShrink="0"
+          onClick={() => setAdding(true)}
+        >
+          <LuPlus /> Add rule
+        </Button>
+      </Flex>
 
       {rules === undefined ? (
-        <Flex justify="center" py="6">
-          <Spinner />
-        </Flex>
+        <CardRowsSkeleton />
       ) : rules.length === 0 ? (
         <EmptyState.Root>
           <EmptyState.Content>
@@ -200,9 +368,13 @@ export function AutoBookRules() {
             <Stack gap="1" textAlign="center">
               <EmptyState.Title>No auto-book rules yet</EmptyState.Title>
               <EmptyState.Description>
-                Open a class and choose “Auto-book weekly”.
+                Add a weekly rule and the app books that class for you the day
+                before — every week.
               </EmptyState.Description>
             </Stack>
+            <Button variant="outline" mt="2" onClick={() => setAdding(true)}>
+              <LuPlus /> Add rule
+            </Button>
           </EmptyState.Content>
         </EmptyState.Root>
       ) : (
@@ -212,6 +384,8 @@ export function AutoBookRules() {
           ))}
         </Stack>
       )}
+
+      <AddRuleDialog open={adding} onClose={() => setAdding(false)} />
     </Stack>
   );
 }
