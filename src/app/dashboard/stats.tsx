@@ -199,7 +199,7 @@ export function Stats() {
   });
   const typesChart = useChart({
     data: topTypes,
-    series: [{ name: "count", color: "purple.solid" }],
+    series: [{ name: "count", color: "teal.solid" }],
   });
 
   return (
