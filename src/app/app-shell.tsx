@@ -2,7 +2,7 @@
 
 import { Box, Container, Flex, Heading, HStack, Icon } from "@chakra-ui/react";
 import type { ReactNode } from "react";
-import { LuWaves } from "react-icons/lu";
+import { LuBicepsFlexed } from "react-icons/lu";
 import { ColorModeButton } from "@/components/ui/color-mode";
 
 /**
@@ -36,7 +36,7 @@ export function AppShell({
           <Flex align="center" justify="space-between" gap="3">
             <HStack gap="2">
               <Icon color="teal.fg" boxSize="6">
-                <LuWaves />
+                <LuBicepsFlexed />
               </Icon>
               <Heading size="md" letterSpacing="tight">
                 fabb
