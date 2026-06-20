@@ -16,13 +16,24 @@ update your row when done.
 
 | Plan | Title | Priority | Effort | Depends on | Status |
 |------|-------|----------|--------|------------|--------|
-| 001 | Replace the water brand glyph with a strength glyph | P2 | S | — | TODO |
-| 002 | Bring the "Top class types" chart back on-palette | P2 | S | — | TODO |
-| 003 | Honor `prefers-reduced-motion` app-wide | P2 | S | — | TODO |
-| 004 | Mark "Today" in the week schedule | P2 | M | — | TODO |
-| 005 | Let the Auto-book tab create a rule | P2 | M | — | TODO |
-| 006 | Lighten the class-detail dialog footer | P3 | M | — | TODO |
-| 007 | Make the Stats period toggle's scope honest | P3 | M | — | TODO |
+| 001 | Replace the water brand glyph with a strength glyph | P2 | S | — | DONE (`f203467`) |
+| 002 | Bring the "Top class types" chart back on-palette | P2 | S | — | DONE (`4a330fe`) |
+| 003 | Honor `prefers-reduced-motion` app-wide | P2 | S | — | DONE (`cd7a90e`) |
+| 004 | Mark "Today" in the week schedule | P2 | M | — | DONE (`b27dfac`) |
+| 005 | Let the Auto-book tab create a rule | P2 | M | — | DONE (`c05ede7` + fix `39bd564`) |
+| 006 | Lighten the class-detail dialog footer | P3 | M | — | DONE (`12ef1fe`) |
+| 007 | Make the Stats period toggle's scope honest | P3 | M | — | DONE (`5f77159`) |
+
+Executed via subagent-driven development on branch `advisor/ui-ux-improvements`
+(baseline `eaefffb`). Each task: fresh implementer → spec+quality review → fix loop.
+Per-task lint gate scoped to the touched file (repo-wide `npm run lint` has a
+pre-existing unrelated error in `vitest.config.ts`). README index maintained by the
+controller, so per-task diffs stayed single-file.
+
+Cosmetic Minors deferred to the final review (none blocking): 004 muted-date Span
+inside the teal "Today" heading (verify in browser); 005 empty-state button `mt="2"`
+inline spacing; 006 em-dash source line-wrap; 007 redundant `SimpleGrid` `mt` under
+the new "Trends" label.
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (one-line reason) | REJECTED
 (one-line rationale).
