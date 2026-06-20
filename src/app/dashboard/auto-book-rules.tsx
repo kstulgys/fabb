@@ -371,10 +371,10 @@ export function AutoBookRules() {
                 Add a weekly rule and the app books that class for you the day
                 before — every week.
               </EmptyState.Description>
-              <Button mt="3" onClick={() => setAdding(true)}>
-                <LuPlus /> Add rule
-              </Button>
             </Stack>
+            <Button variant="outline" mt="2" onClick={() => setAdding(true)}>
+              <LuPlus /> Add rule
+            </Button>
           </EmptyState.Content>
         </EmptyState.Root>
       ) : (
