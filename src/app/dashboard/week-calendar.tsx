@@ -17,7 +17,7 @@ import { LuCalendarDays, LuClock, LuFlame } from "react-icons/lu";
 import { api } from "../../../convex/_generated/api";
 import type { Doc } from "../../../convex/_generated/dataModel";
 import { format, fromColumns } from "../../../convex/calories";
-import { classStatus } from "../../../convex/week";
+import { classStatus, todayDate } from "../../../convex/week";
 import { ClassDetailDialog, StatusBadge } from "./class-detail";
 import { Intensity } from "./intensity";
 import { ScheduleSkeleton } from "./skeletons";
@@ -115,6 +115,7 @@ export function WeekCalendar() {
   const [selected, setSelected] = useState<Doc<"classes"> | null>(null);
   // One "now" for this render drives every status marking and the open dialog.
   const now = new Date();
+  const today = todayDate(now);
 
   if (week === undefined) {
     return <ScheduleSkeleton />;
@@ -137,12 +138,22 @@ export function WeekCalendar() {
       <Stack gap="6">
         {week.days.map((day) => (
           <Stack gap="2" key={day.date}>
-            <Heading size="sm">
-              {day.weekday}{" "}
-              <Span color="fg.muted" fontWeight="normal">
-                · {day.date}
-              </Span>
-            </Heading>
+            <HStack gap="2">
+              <Heading
+                size="sm"
+                color={day.date === today ? "teal.fg" : undefined}
+              >
+                {day.weekday}{" "}
+                <Span color="fg.muted" fontWeight="normal">
+                  · {day.date}
+                </Span>
+              </Heading>
+              {day.date === today && (
+                <Badge colorPalette="teal" variant="subtle" size="sm">
+                  Today
+                </Badge>
+              )}
+            </HStack>
             {day.classes.length === 0 ? (
               <Text color="fg.muted" fontSize="sm">
                 No classes.
