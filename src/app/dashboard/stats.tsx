@@ -12,6 +12,7 @@ import {
   Icon,
   SegmentGroup,
   SimpleGrid,
+  Span,
   Stack,
   Text,
 } from "@chakra-ui/react";
@@ -251,12 +252,22 @@ export function Stats() {
             ))}
           </SegmentGroup.Root>
 
+          <Text fontSize="xs" color="fg.muted">
+            The period above sets the totals below. Trends and top types span your full
+            history.
+          </Text>
+
           <Scoreboard
             periodLabel={PERIOD_LABELS[period]}
             classes={summary.totals.classes}
             calories={Math.round(summary.totals.calories)}
             streak={summary.streak}
           />
+
+          <Text fontSize="sm" fontWeight="medium">
+            Trends{" "}
+            <Span color="fg.muted" fontWeight="normal">· last 12 weeks</Span>
+          </Text>
 
           <SimpleGrid
             columns={{ base: 1, md: 2 }}
@@ -344,7 +355,7 @@ export function Stats() {
             </ChartCard>
           </SimpleGrid>
 
-          <ChartCard title="Top class types">
+          <ChartCard title="Top class types · all time">
             <SrChartTable
               caption="Most-attended class types"
               head={["Class", "Times attended"]}
