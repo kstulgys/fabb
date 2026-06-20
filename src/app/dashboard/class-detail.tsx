@@ -323,9 +323,8 @@ function AutoBookWeekly({ cls }: { cls: Doc<"classes"> }) {
         </Alert.Root>
       )}
       <Text fontSize="xs" color="fg.muted">
-        Books “{cls.name}” every {weekday} at {cls.startTime} from next week on.
-        Disabling or deleting the rule stops future bookings but never cancels a
-        booking already placed.
+        Books “{cls.name}” every {weekday} at {cls.startTime} from next week
+        on — disabling or deleting the rule only stops future bookings.
       </Text>
     </Stack>
   );
