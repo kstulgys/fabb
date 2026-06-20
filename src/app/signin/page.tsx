@@ -1,6 +1,6 @@
 "use client";
 
-import { Center, Flex, Spinner } from "@chakra-ui/react";
+import { Flex } from "@chakra-ui/react";
 import { useConvexAuth } from "convex/react";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
@@ -19,13 +19,9 @@ export default function SignInPage() {
   }, [isLoading, isAuthenticated, router]);
 
   // While auth is resolving — or already signed in and about to redirect —
-  // show a spinner rather than flashing the form to an authenticated visitor.
+  // render nothing rather than flashing the form to an authenticated visitor.
   if (isLoading || isAuthenticated) {
-    return (
-      <Center minH="100dvh">
-        <Spinner size="lg" />
-      </Center>
-    );
+    return null;
   }
 
   return (

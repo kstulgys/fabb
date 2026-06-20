@@ -11,7 +11,6 @@ import {
   HStack,
   Portal,
   Span,
-  Spinner,
   Stack,
   Stat,
   Text,
@@ -66,8 +65,8 @@ function LiveSpots({ cls }: { cls: Doc<"classes"> }) {
 
   useEffect(() => {
     let cancelled = false;
-    // Reset to loading on every (re)open and manual retry so the spinner shows
-    // while the volatile availability is refetched (ADR-0002, never cached).
+    // Reset to loading on every (re)open and manual retry so the volatile
+    // availability is refetched (ADR-0002, never cached).
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setState({ kind: "loading" });
     fetchAvailability({ pid: cls.pid, date: cls.date })
@@ -83,12 +82,7 @@ function LiveSpots({ cls }: { cls: Doc<"classes"> }) {
   }, [fetchAvailability, cls.pid, cls.date, reloadAt]);
 
   if (state.kind === "loading") {
-    return (
-      <HStack gap="2" color="fg.muted">
-        <Spinner size="sm" />
-        <Text fontSize="sm">Checking live availability…</Text>
-      </HStack>
-    );
+    return null;
   }
 
   if (state.kind === "error") {
@@ -225,9 +219,7 @@ function BookNow({ cls }: { cls: Doc<"classes"> }) {
   return (
     <Stack gap="3">
       <Button
-        loading={state.kind === "booking"}
-        loadingText="Booking…"
-        disabled={held}
+        disabled={held || state.kind === "booking"}
         onClick={onBook}
         w={{ base: "full", sm: "auto" }}
       >
@@ -269,7 +261,7 @@ function AutoBookWeekly({ cls }: { cls: Doc<"classes"> }) {
   const [state, setState] = useState<AutoBookState>({ kind: "idle" });
 
   if (details === undefined) {
-    return <Spinner size="sm" />;
+    return null;
   }
   if (!details.detailsComplete) {
     return (
@@ -295,9 +287,7 @@ function AutoBookWeekly({ cls }: { cls: Doc<"classes"> }) {
     <Stack gap="3">
       <Button
         variant="outline"
-        loading={state.kind === "saving"}
-        loadingText="Setting up…"
-        disabled={state.kind === "done"}
+        disabled={state.kind === "done" || state.kind === "saving"}
         onClick={onCreate}
         w={{ base: "full", sm: "auto" }}
       >

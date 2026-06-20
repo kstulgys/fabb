@@ -14,7 +14,6 @@ import {
   NativeSelect,
   Portal,
   Span,
-  Spinner,
   Stack,
   Switch,
   Text,
@@ -253,11 +252,7 @@ function AddRuleBody({ onClose }: { onClose: () => void }) {
         <CloseButton size="sm" />
       </Dialog.CloseTrigger>
       <Dialog.Body>
-        {week === undefined ? (
-          <Flex justify="center" py="6">
-            <Spinner />
-          </Flex>
-        ) : options.length === 0 ? (
+        {week === undefined ? null : options.length === 0 ? (
           <Alert.Root status="info" mt="2">
             <Alert.Indicator />
             <Alert.Content>
@@ -292,8 +287,6 @@ function AddRuleBody({ onClose }: { onClose: () => void }) {
             <Button
               alignSelf={{ base: "stretch", sm: "flex-start" }}
               disabled={picked === null || busy}
-              loading={busy}
-              loadingText="Adding…"
               onClick={submit}
             >
               <LuPlus /> Add rule

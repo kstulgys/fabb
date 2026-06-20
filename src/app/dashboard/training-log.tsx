@@ -16,7 +16,6 @@ import {
   Input,
   NativeSelect,
   Portal,
-  Spinner,
   Stack,
   Tabs,
   Text,
@@ -219,8 +218,7 @@ function ManualLogForm({
       </Text>
       <Button
         alignSelf={{ base: "stretch", sm: "flex-start" }}
-        loading={busy}
-        loadingText="Saving…"
+        disabled={busy}
         onClick={submit}
       >
         {submitLabel}
@@ -281,11 +279,7 @@ function PickClassPanel({ onDone }: { onDone: () => void }) {
   const [error, setError] = useState<string | null>(null);
 
   if (week === undefined) {
-    return (
-      <Flex justify="center" py="6">
-        <Spinner />
-      </Flex>
-    );
+    return null;
   }
 
   const options = week.days.flatMap((day) =>
@@ -352,8 +346,6 @@ function PickClassPanel({ onDone }: { onDone: () => void }) {
       <Button
         alignSelf={{ base: "stretch", sm: "flex-start" }}
         disabled={picked === null || busy}
-        loading={busy}
-        loadingText="Adding…"
         onClick={submit}
       >
         Add log
