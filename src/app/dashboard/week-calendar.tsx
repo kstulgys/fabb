@@ -23,6 +23,7 @@ import { format, fromColumns } from "../../../convex/calories";
 import { classStatus, todayDate } from "../../../convex/week";
 import { ClassDetailDialog, StatusBadge } from "./class-detail";
 import { Intensity } from "./intensity";
+import { pickInitialView } from "./pick-initial-view";
 import { ScheduleSkeleton } from "./skeletons";
 
 /** A read-only fact in a class row: a small muted icon beside its value. */
@@ -189,16 +190,29 @@ function DayTab({
 }
 
 /**
- * The week schedule, one day at a time. A seven-day strip selects the day
- * (today by default); only that day's classes show below, so the whole week is
- * a glance instead of a long scroll. Presentational: it takes the already-loaded
+ * The week schedule, one day at a time. A seven-day strip selects the day —
+ * the caller's `initialDate` when it lands in this week, else today, else the
+ * week's first day; only that day's classes show below, so the whole week is a
+ * glance instead of a long scroll. Presentational: it takes the already-loaded
  * week, so it can render from mock data and be unit-tested without Convex.
  */
-export function WeekSchedule({ week, now }: { week: WeekClasses; now: Date }) {
+export function WeekSchedule({
+  week,
+  now,
+  initialDate,
+}: {
+  week: WeekClasses;
+  now: Date;
+  initialDate?: string;
+}) {
   const today = todayDate(now);
   const [selected, setSelected] = useState<Doc<"classes"> | null>(null);
   const [activeDate, setActiveDate] = useState(
-    week.days.some((d) => d.date === today) ? today : week.days[0].date,
+    initialDate && week.days.some((d) => d.date === initialDate)
+      ? initialDate
+      : week.days.some((d) => d.date === today)
+        ? today
+        : week.days[0].date,
   );
   const activeDay =
     week.days.find((d) => d.date === activeDate) ?? week.days[0];
@@ -324,30 +338,46 @@ function WeekToggle({
 }
 
 /**
+ * The loaded Schedule window: the week toggle above the selected week's day
+ * schedule. Split out from {@link WeekCalendar} so it mounts only once
+ * `scheduleWeeks` has resolved — its initial selection, the smart landing week
+ * and day from {@link pickInitialView} (current-unless-spent, today-as-anchor),
+ * is then computed from real data in `useState` initializers, no effect needed.
+ * One `now` for this render drives that choice and every status marking. The
+ * `initialDate` only "sticks" to the week that contains it, so toggling to the
+ * other week falls back to {@link WeekSchedule}'s own naive day default.
+ */
+function ScheduleWindow({ weeks, now }: { weeks: WeekClasses[]; now: Date }) {
+  const [initial] = useState(() => pickInitialView(weeks, now));
+  const [active, setActive] = useState(initial.weekIndex);
+  const week = weeks[active] ?? weeks[0];
+
+  return (
+    <Stack gap="5">
+      <WeekToggle weeks={weeks} active={active} onSelect={setActive} />
+      <WeekSchedule
+        key={week.weekStart}
+        week={week}
+        now={now}
+        initialDate={initial.date}
+      />
+    </Stack>
+  );
+}
+
+/**
  * Loads the Schedule window (the current Mon–Sun week and the next) from the
  * shared `classes` cache (ADR-0002) — populated by the scrape action, read
- * reactively, never scraped per view — and lets the User toggle between the two
- * weeks, handing the selected one to {@link WeekSchedule}. Opening a class
- * fetches its volatile free-spot count live (never cached).
+ * reactively, never scraped per view — and hands it to {@link ScheduleWindow}
+ * once resolved. Opening a class fetches its volatile free-spot count live
+ * (never cached).
  */
 export function WeekCalendar() {
   const data = useQuery(api.classes.scheduleWeeks, {});
-  const [active, setActive] = useState(0);
 
   if (data === undefined) {
     return <ScheduleSkeleton />;
   }
 
-  const { weeks } = data;
-  const week = weeks[active] ?? weeks[0];
-
-  // One "now" for this render drives every status marking and the open dialog.
-  // Keying WeekSchedule by the week resets its naive day default (today, else
-  // the week's Monday) whenever the User switches weeks.
-  return (
-    <Stack gap="5">
-      <WeekToggle weeks={weeks} active={active} onSelect={setActive} />
-      <WeekSchedule key={week.weekStart} week={week} now={new Date()} />
-    </Stack>
-  );
+  return <ScheduleWindow weeks={data.weeks} now={new Date()} />;
 }
