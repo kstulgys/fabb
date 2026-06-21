@@ -91,10 +91,10 @@ describe("stats.summary — period totals", () => {
 
     const s = await t
       .withIdentity({ subject: userId })
-      .query(api.stats.summary, { period: "week", now: NOW });
+      .query(api.stats.summary, { now: NOW });
 
     // 3 attended this week (incl. the null-Calorie Spin); calories 375 + 300.
-    expect(s.totals).toEqual({ classes: 3, calories: 675 });
+    expect(s.totals.week).toEqual({ classes: 3, calories: 675 });
   });
 
   test("month and all-time totals scope correctly", async () => {
@@ -103,17 +103,11 @@ describe("stats.summary — period totals", () => {
     await seedMix(t, userId);
     const asUser = t.withIdentity({ subject: userId });
 
-    const month = await asUser.query(api.stats.summary, {
-      period: "month",
-      now: NOW,
-    });
-    expect(month.totals).toEqual({ classes: 4, calories: 825 });
+    const month = await asUser.query(api.stats.summary, { now: NOW });
+    expect(month.totals.month).toEqual({ classes: 4, calories: 825 });
 
-    const all = await asUser.query(api.stats.summary, {
-      period: "all",
-      now: NOW,
-    });
-    expect(all.totals).toEqual({ classes: 5, calories: 1375 });
+    const all = await asUser.query(api.stats.summary, { now: NOW });
+    expect(all.totals.all).toEqual({ classes: 5, calories: 1375 });
   });
 
   test("weekly series and top types reflect attended logs only", async () => {
@@ -123,7 +117,7 @@ describe("stats.summary — period totals", () => {
 
     const s = await t
       .withIdentity({ subject: userId })
-      .query(api.stats.summary, { period: "all", now: NOW });
+      .query(api.stats.summary, { now: NOW });
 
     // Buckets ascending; the attended:false "Boot" never appears.
     expect(s.weekly).toEqual([
@@ -148,9 +142,9 @@ describe("stats.summary — null Calories vs attendance", () => {
 
     const s = await t
       .withIdentity({ subject: userId })
-      .query(api.stats.summary, { period: "week", now: NOW });
+      .query(api.stats.summary, { now: NOW });
 
-    expect(s.totals).toEqual({ classes: 2, calories: 375 });
+    expect(s.totals.week).toEqual({ classes: 2, calories: 375 });
     expect(s.streak).toBe(1);
     expect(s.topTypes).toEqual([{ className: "Aqua", count: 2 }]);
   });
@@ -172,9 +166,9 @@ describe("stats.summary — attended:false is excluded everywhere", () => {
 
     const s = await t
       .withIdentity({ subject: userId })
-      .query(api.stats.summary, { period: "all", now: NOW });
+      .query(api.stats.summary, { now: NOW });
 
-    expect(s.totals).toEqual({ classes: 1, calories: 0 });
+    expect(s.totals.all).toEqual({ classes: 1, calories: 0 });
     expect(s.topTypes).toEqual([{ className: "Aqua", count: 1 }]);
     // Were "Ghost" counted, week 06-08 would extend the streak to 2.
     expect(s.streak).toBe(1);
@@ -191,7 +185,7 @@ describe("stats.summary — current streak across Vilnius week boundaries", () =
 
     const s = await t
       .withIdentity({ subject: userId })
-      .query(api.stats.summary, { period: "all", now: NOW });
+      .query(api.stats.summary, { now: NOW });
 
     expect(s.streak).toBe(3);
   });
@@ -205,14 +199,12 @@ describe("stats.summary — current streak across Vilnius week boundaries", () =
 
     // Monday 2026-06-22 — the new week has no logs yet → grace via last week.
     const grace = await asUser.query(api.stats.summary, {
-      period: "all",
       now: Date.parse("2026-06-22T10:00:00Z"),
     });
     expect(grace.streak).toBe(2);
 
     // 2026-06-29 — last activity (week 06-15) is now two weeks back → broken.
     const broken = await asUser.query(api.stats.summary, {
-      period: "all",
       now: Date.parse("2026-06-29T10:00:00Z"),
     });
     expect(broken.streak).toBe(0);
@@ -233,21 +225,21 @@ describe("stats.summary — owner isolation", () => {
 
     const a = await t
       .withIdentity({ subject: userA })
-      .query(api.stats.summary, { period: "week", now: NOW });
+      .query(api.stats.summary, { now: NOW });
     const b = await t
       .withIdentity({ subject: userB })
-      .query(api.stats.summary, { period: "week", now: NOW });
+      .query(api.stats.summary, { now: NOW });
 
-    expect(a.totals).toEqual({ classes: 2, calories: 750 });
+    expect(a.totals.week).toEqual({ classes: 2, calories: 750 });
     expect(a.topTypes).toEqual([{ className: "Aqua", count: 2 }]);
-    expect(b.totals).toEqual({ classes: 1, calories: 100 });
+    expect(b.totals.week).toEqual({ classes: 1, calories: 100 });
     expect(b.topTypes).toEqual([{ className: "Spin", count: 1 }]);
   });
 
   test("an unauthenticated caller cannot read stats", async () => {
     const t = convexTest(schema, modules);
     await expect(
-      t.query(api.stats.summary, { period: "all" }),
+      t.query(api.stats.summary, {}),
     ).rejects.toThrow("Not authenticated");
   });
 });

@@ -39,18 +39,20 @@ const STATS_LIMIT = 2000;
  * only and never shortens the streak. */
 const WEEKLY_WINDOW = 12;
 
-/** Validator + type for the period toggle, shared so the client and server
- * agree on the three allowed values. */
-export const periodValidator = v.union(
-  v.literal("week"),
-  v.literal("month"),
-  v.literal("all"),
-);
+/** Attendance + calorie totals for one period scope. */
+export interface PeriodTotals {
+  classes: number;
+  calories: number;
+}
 
-/** The whole dashboard payload, returned by {@link summary}. */
+/**
+ * The whole dashboard payload, returned by {@link summary}. Totals are computed
+ * for every period scope in one read, so the client's period toggle is a pure
+ * selection — no refetch, no loading flash. Trends, streak, and top types span
+ * the User's full history regardless of which period is selected.
+ */
 export interface StatsSummary {
-  period: StatsPeriod;
-  totals: { classes: number; calories: number };
+  totals: Record<StatsPeriod, PeriodTotals>;
   weekly: WeekBucket[];
   streak: number;
   topTypes: ClassTypeCount[];
@@ -59,8 +61,8 @@ export interface StatsSummary {
 export const summary = query({
   // `now` (epoch ms) is an optional test seam mirroring `convertCompletedBookings`
   // and `autoBook`; production callers omit it and the server clock is used.
-  args: { period: periodValidator, now: v.optional(v.number()) },
-  handler: async (ctx, { period, now }): Promise<StatsSummary> => {
+  args: { now: v.optional(v.number()) },
+  handler: async (ctx, { now }): Promise<StatsSummary> => {
     const userId = await requireUserId(ctx);
 
     const rows = await ctx.db
@@ -73,8 +75,11 @@ export const summary = query({
     const today = todayDate(resolveClock(now));
 
     return {
-      period,
-      totals: periodTotals(attended, period, today),
+      totals: {
+        week: periodTotals(attended, "week", today),
+        month: periodTotals(attended, "month", today),
+        all: periodTotals(attended, "all", today),
+      },
       weekly: weeklySeries(attended).slice(-WEEKLY_WINDOW),
       streak: currentStreak(attended, today),
       topTypes: topClassTypes(attended),

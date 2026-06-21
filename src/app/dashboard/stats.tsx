@@ -76,6 +76,7 @@ function Scoreboard({
               fontWeight="bold"
               lineHeight="0.9"
               letterSpacing="tight"
+              fontVariantNumeric="tabular-nums"
             >
               {classes}
             </Text>
@@ -91,7 +92,7 @@ function Scoreboard({
               <Icon boxSize="4">
                 <LuFlame />
               </Icon>
-              <Text fontSize="2xl" fontWeight="bold" lineHeight="1">
+              <Text fontSize="2xl" fontWeight="bold" lineHeight="1" fontVariantNumeric="tabular-nums">
                 {streak}
               </Text>
             </HStack>
@@ -100,7 +101,7 @@ function Scoreboard({
             </Text>
           </Stack>
           <Stack gap="0.5">
-            <Text fontSize="2xl" fontWeight="bold" lineHeight="1">
+            <Text fontSize="2xl" fontWeight="bold" lineHeight="1" fontVariantNumeric="tabular-nums">
               {calories.toLocaleString()}
             </Text>
             <Text fontSize="xs" fontWeight="medium">
@@ -173,7 +174,7 @@ function SrChartTable({
  */
 export function Stats() {
   const [period, setPeriod] = useState<Period>("week");
-  const summary = useQuery(api.stats.summary, { period });
+  const summary = useQuery(api.stats.summary, {});
 
   const weekly = summary?.weekly ?? [];
   const topTypes = summary?.topTypes ?? [];
@@ -259,8 +260,8 @@ export function Stats() {
 
           <Scoreboard
             periodLabel={PERIOD_LABELS[period]}
-            classes={summary.totals.classes}
-            calories={Math.round(summary.totals.calories)}
+            classes={summary.totals[period].classes}
+            calories={Math.round(summary.totals[period].calories)}
             streak={summary.streak}
           />
 
