@@ -1,8 +1,10 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
-import { api } from "./_generated/api";
+import { v } from "convex/values";
+import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import type { ActionCtx, MutationCtx, QueryCtx } from "./_generated/server";
-import { mutation, query } from "./_generated/server";
+import { action, internalMutation, internalQuery, query } from "./_generated/server";
+import { decryptPoolFields, encryptPoolFields } from "./crypto";
 import {
   ACCOUNT_EMAIL_MISSING_MESSAGE,
   EMAIL_RE,
@@ -55,35 +57,55 @@ export type MyPoolDetails = {
   detailsComplete: boolean;
 };
 
-/**
- * Set or overwrite the calling User's Pool details. The single entry point for
- * both onboarding and the settings screen — a later edit just overwrites.
- *
- * The User enters only name, surname, and phone; the booking email is NOT asked
- * for — it is the account/signup email (`users.email`), stamped here server-side
- * so it always matches the account. Validates the three fields (`+370` phone
- * form) and requires the account to have a usable email; invalid input is
- * rejected with a clear message. On success all four stored fields are present
- * and valid, so `detailsComplete` is set to `true`.
- */
-export const setPoolDetails = mutation({
-  args: poolDetailsInputValidator.fields,
-  handler: async (ctx, args): Promise<null> => {
-    const userId = await requireUserId(ctx);
-    const result = validatePoolDetails(args);
-    if (!result.ok) {
-      throw new Error(result.error);
-    }
-    // The booking email is the account/signup email, never re-typed in the
-    // form — derive it from the User doc and require it to be usable.
+export const accountEmail = internalQuery({
+  args: { userId: v.id("users") },
+  handler: async (ctx, { userId }): Promise<string> => {
     const user = await ctx.db.get("users", userId);
     const email = user?.email?.trim() ?? "";
-    if (!EMAIL_RE.test(email)) {
-      throw new Error(ACCOUNT_EMAIL_MISSING_MESSAGE);
-    }
+    if (!EMAIL_RE.test(email)) throw new Error(ACCOUNT_EMAIL_MISSING_MESSAGE);
+    return email;
+  },
+});
+
+export const storePoolDetails = internalMutation({
+  args: {
+    userId: v.id("users"),
+    encrypted: v.object({
+      name: v.string(),
+      surname: v.string(),
+      phone: v.string(),
+    }),
+    email: v.string(),
+  },
+  handler: async (ctx, { userId, encrypted, email }): Promise<null> => {
     await ctx.db.patch("users", userId, {
-      poolDetails: { ...result.value, email },
+      poolDetails: { ...encrypted, email },
       detailsComplete: true,
+    });
+    return null;
+  },
+});
+
+/**
+ * Set/overwrite the caller's pool details. An ACTION because encryption uses
+ * `crypto.subtle` (Convex actions-only): validate -> fetch the account email ->
+ * encrypt name/surname/phone -> persist via the internal mutation.
+ */
+export const setPoolDetails = action({
+  args: poolDetailsInputValidator.fields,
+  handler: async (ctx, args): Promise<null> => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) throw new Error("Not authenticated");
+    const result = validatePoolDetails(args);
+    if (!result.ok) throw new Error(result.error);
+    const email = await ctx.runQuery(internal.poolDetailsOps.accountEmail, {
+      userId,
+    });
+    const encrypted = await encryptPoolFields(result.value);
+    await ctx.runMutation(internal.poolDetailsOps.storePoolDetails, {
+      userId,
+      encrypted,
+      email,
     });
     return null;
   },
@@ -131,5 +153,27 @@ export async function requirePoolDetailsForAction(
   if (!hasCompleteDetails(details)) {
     throw new Error(POOL_DETAILS_INCOMPLETE_MESSAGE);
   }
-  return { userId, poolDetails: details.poolDetails };
+  const dec = await decryptPoolFields(details.poolDetails);
+  return {
+    userId,
+    poolDetails: { ...dec, email: details.poolDetails.email },
+  };
 }
+
+/** The caller's OWN pool details, decrypted (action — decryption is actions-only).
+ * Used by the settings/onboarding form to prefill. */
+export const getPoolDetailsDecrypted = action({
+  args: {},
+  handler: async (ctx): Promise<MyPoolDetails> => {
+    const mine: MyPoolDetails = await ctx.runQuery(
+      api.poolDetailsOps.myPoolDetails,
+      {},
+    );
+    if (!mine.poolDetails) return mine;
+    const dec = await decryptPoolFields(mine.poolDetails);
+    return {
+      detailsComplete: mine.detailsComplete,
+      poolDetails: { ...dec, email: mine.poolDetails.email },
+    };
+  },
+});

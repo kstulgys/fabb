@@ -42,6 +42,9 @@ export const poolDetailsValidator = v.object({
 /** The four Pool details fields stored per User and sent to the pool. */
 export type PoolDetails = Infer<typeof poolDetailsValidator>;
 
+/** At-rest shape: name/surname/phone are AES-GCM ciphertext, email plaintext. */
+export type StoredPoolDetails = PoolDetails;
+
 /** A pragmatic "looks like an email" check: non-empty local + domain + TLD. */
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 

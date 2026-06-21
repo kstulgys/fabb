@@ -27,12 +27,15 @@ describe("setPoolDetails + myPoolDetails", () => {
     );
     const asUser = t.withIdentity({ subject: userId });
 
-    await asUser.mutation(api.poolDetailsOps.setPoolDetails, INPUT);
-
-    const mine = await asUser.query(api.poolDetailsOps.myPoolDetails, {});
+    await asUser.action(api.poolDetailsOps.setPoolDetails, INPUT);
+    const mine = await asUser.action(api.poolDetailsOps.getPoolDetailsDecrypted, {});
     expect(mine.detailsComplete).toBe(true);
-    // The stored email is the account email — never asked for in the form.
-    expect(mine.poolDetails).toEqual(STORED);
+    expect(mine.poolDetails).toEqual(STORED); // decrypted round-trip
+
+    const raw = await t.run((ctx) => ctx.db.get("users", userId));
+    expect(raw?.poolDetails?.name).toMatch(/^v1:/); // ciphertext at rest
+    expect(raw?.poolDetails?.name).not.toContain("Jonas");
+    expect(raw?.poolDetails?.email).toBe(ACCOUNT_EMAIL); // email plaintext
   });
 
   test("a later edit overwrites the earlier values, email stays the account one", async () => {
@@ -42,14 +45,14 @@ describe("setPoolDetails + myPoolDetails", () => {
     );
     const asUser = t.withIdentity({ subject: userId });
 
-    await asUser.mutation(api.poolDetailsOps.setPoolDetails, INPUT);
-    await asUser.mutation(api.poolDetailsOps.setPoolDetails, {
+    await asUser.action(api.poolDetailsOps.setPoolDetails, INPUT);
+    await asUser.action(api.poolDetailsOps.setPoolDetails, {
       ...INPUT,
       surname: "Petraitis",
       phone: "+37060000000",
     });
 
-    const mine = await asUser.query(api.poolDetailsOps.myPoolDetails, {});
+    const mine = await asUser.action(api.poolDetailsOps.getPoolDetailsDecrypted, {});
     expect(mine.poolDetails?.surname).toBe("Petraitis");
     expect(mine.poolDetails?.phone).toBe("+37060000000");
     expect(mine.poolDetails?.email).toBe(ACCOUNT_EMAIL);
@@ -61,7 +64,7 @@ describe("setPoolDetails + myPoolDetails", () => {
     const asUser = t.withIdentity({ subject: userId });
 
     await expect(
-      asUser.mutation(api.poolDetailsOps.setPoolDetails, INPUT),
+      asUser.action(api.poolDetailsOps.setPoolDetails, INPUT),
     ).rejects.toThrow(ACCOUNT_EMAIL_MISSING_MESSAGE);
 
     const mine = await asUser.query(api.poolDetailsOps.myPoolDetails, {});
@@ -77,7 +80,7 @@ describe("setPoolDetails + myPoolDetails", () => {
     const asUser = t.withIdentity({ subject: userId });
 
     await expect(
-      asUser.mutation(api.poolDetailsOps.setPoolDetails, {
+      asUser.action(api.poolDetailsOps.setPoolDetails, {
         ...INPUT,
         phone: "861234567",
       }),
@@ -87,7 +90,7 @@ describe("setPoolDetails + myPoolDetails", () => {
   test("an unauthenticated caller cannot set or read details", async () => {
     const t = convexTest(schema, modules);
     await expect(
-      t.mutation(api.poolDetailsOps.setPoolDetails, INPUT),
+      t.action(api.poolDetailsOps.setPoolDetails, INPUT),
     ).rejects.toThrow("Not authenticated");
     await expect(t.query(api.poolDetailsOps.myPoolDetails, {})).rejects.toThrow(
       "Not authenticated",
@@ -102,11 +105,11 @@ describe("requirePoolDetails — booking gate (query/mutation ctx)", () => {
       ctx.db.insert("users", { email: ACCOUNT_EMAIL }),
     );
     const asUser = t.withIdentity({ subject: userId });
-    await asUser.mutation(api.poolDetailsOps.setPoolDetails, INPUT);
+    await asUser.action(api.poolDetailsOps.setPoolDetails, INPUT);
 
     const gated = await asUser.query((ctx) => requirePoolDetails(ctx));
     expect(gated.userId).toBe(userId);
-    expect(gated.poolDetails).toEqual(STORED);
+    expect(gated.poolDetails.name).toMatch(/^v1:/);
   });
 
   test("refuses with the complete-your-details signal when incomplete", async () => {
@@ -129,7 +132,7 @@ describe("requirePoolDetailsForAction — booking gate (action ctx)", () => {
       ctx.db.insert("users", { email: ACCOUNT_EMAIL }),
     );
     const asUser = t.withIdentity({ subject: userId });
-    await asUser.mutation(api.poolDetailsOps.setPoolDetails, INPUT);
+    await asUser.action(api.poolDetailsOps.setPoolDetails, INPUT);
 
     const gated = await asUser.action((ctx) => requirePoolDetailsForAction(ctx));
     expect(gated.userId).toBe(userId);
@@ -166,7 +169,7 @@ test("a second User cannot read the first User's Pool details (isolation)", asyn
 
   await t
     .withIdentity({ subject: userA })
-    .mutation(api.poolDetailsOps.setPoolDetails, INPUT);
+    .action(api.poolDetailsOps.setPoolDetails, INPUT);
 
   // B's own details view never contains A's PII.
   const bDetails = await t
@@ -185,7 +188,7 @@ test("a second User cannot read the first User's Pool details (isolation)", asyn
   // Sanity: A reads their own — stamped with A's account email, not B's.
   const aDetails = await t
     .withIdentity({ subject: userA })
-    .query(api.poolDetailsOps.myPoolDetails, {});
+    .action(api.poolDetailsOps.getPoolDetailsDecrypted, {});
   expect(aDetails.poolDetails).toEqual({ ...INPUT, email: "a@example.com" });
 });
 

@@ -1,7 +1,7 @@
 "use client";
 
-import { Alert, Button, Card, Field, Input, Stack } from "@chakra-ui/react";
-import { useMutation, useQuery } from "convex/react";
+import { Alert, Button, Card, Field, Input, Stack, Text } from "@chakra-ui/react";
+import { useAction, useQuery } from "convex/react";
 import { useEffect, useState } from "react";
 import { api } from "../../convex/_generated/api";
 import { type PoolDetailsInput, validatePoolDetails } from "../../convex/poolDetails";
@@ -29,7 +29,8 @@ const FIELDS: ReadonlyArray<{
 /**
  * The Pool details form (name, surname, phone), shared by onboarding (on the
  * dashboard, when details are incomplete) and the settings screen (editing
- * later). It prefills from {@link api.poolDetailsOps.myPoolDetails} and saves
+ * later). It prefills from {@link api.poolDetailsOps.getPoolDetailsDecrypted}
+ * (an action — decryption is actions-only) and saves
  * via {@link api.poolDetailsOps.setPoolDetails}.
  *
  * The booking email is NOT asked for — it is the User's account/signup email,
@@ -55,8 +56,8 @@ export function PoolDetailsForm({
   submitLabel: string;
   onSaved?: () => void;
 }) {
-  const existing = useQuery(api.poolDetailsOps.myPoolDetails);
-  const save = useMutation(api.poolDetailsOps.setPoolDetails);
+  const loadDetails = useAction(api.poolDetailsOps.getPoolDetailsDecrypted);
+  const save = useAction(api.poolDetailsOps.setPoolDetails);
   const me = useQuery(api.users.currentUser);
   const [values, setValues] = useState<PoolDetailsInput>(EMPTY);
   const [invalid, setInvalid] = useState<{
@@ -67,16 +68,19 @@ export function PoolDetailsForm({
   const [submitting, setSubmitting] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  // Prefill once the existing details load (editing in settings).
+  // Load + decrypt the caller's details once on mount (settings edit prefill).
   useEffect(() => {
-    if (existing?.poolDetails) {
-      const { name, surname, phone } = existing.poolDetails;
-      // Sync the form to async-loaded server data (settings edit) — an
-      // intentional one-shot effect setState, not a render-time derivation.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setValues({ name, surname, phone });
-    }
-  }, [existing?.poolDetails]);
+    let active = true;
+    void loadDetails().then((mine) => {
+      if (active && mine.poolDetails) {
+        const { name, surname, phone } = mine.poolDetails;
+        setValues({ name, surname, phone });
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [loadDetails]);
 
   const update =
     (field: keyof PoolDetailsInput) =>
@@ -144,6 +148,10 @@ export function PoolDetailsForm({
               <Input value={me?.email ?? ""} disabled />
               <Field.HelperText>Uses your account email.</Field.HelperText>
             </Field.Root>
+
+            <Text fontSize="xs" color="fg.muted">
+              Your name, surname and phone are encrypted at rest.
+            </Text>
 
             {formError ? (
               <Alert.Root status="error">

@@ -6,27 +6,30 @@ import {
   Button,
   Card,
   CloseButton,
+  createListCollection,
   DataList,
   Dialog,
   EmptyState,
   Field,
   Flex,
   Heading,
+  HStack,
   IconButton,
   Input,
-  NativeSelect,
-  Portal,
+  RatingGroup,
+  Select,
   Stack,
   Tabs,
   Text,
 } from "@chakra-ui/react";
 import { useMutation, useQuery } from "convex/react";
-import { type ChangeEvent, useState } from "react";
+import { type ChangeEvent, useMemo, useState } from "react";
 import {
   LuCalendarDays,
   LuCircleCheck,
   LuClipboardList,
   LuDumbbell,
+  LuHeart,
   LuPencil,
   LuPlus,
   LuX,
@@ -37,6 +40,7 @@ import { format, fromColumns, requirePair } from "../../../convex/calories";
 import { ConfirmDeleteButton } from "../confirm-delete-button";
 import { Intensity } from "./intensity";
 import { CardRowsSkeleton } from "./skeletons";
+import { SheetDialog } from "./sheet-dialog";
 
 /** The fields shared by the typed-add and edit forms, held as raw input text. */
 type FormValues = {
@@ -100,7 +104,7 @@ function ManualLogForm({
 
   const set =
     (key: keyof FormValues) =>
-    (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    (e: ChangeEvent<HTMLInputElement>) => {
       setValues((v) => ({ ...v, [key]: e.target.value }));
       setInvalid((cur) => (cur?.field === key ? null : cur));
     };
@@ -167,18 +171,41 @@ function ManualLogForm({
         </Field.ErrorText>
       </Field.Root>
       <Field.Root>
-        <Field.Label>Intensity (hearts)</Field.Label>
-        <NativeSelect.Root>
-          <NativeSelect.Field value={values.intensity} onChange={set("intensity")}>
-            <option value="0">Not rated</option>
-            <option value="1">1 heart</option>
-            <option value="2">2 hearts</option>
-            <option value="3">3 hearts</option>
-            <option value="4">4 hearts</option>
-            <option value="5">5 hearts</option>
-          </NativeSelect.Field>
-          <NativeSelect.Indicator />
-        </NativeSelect.Root>
+        <Field.Label>Intensity</Field.Label>
+        <HStack gap="3">
+          <RatingGroup.Root
+            count={5}
+            size="lg"
+            colorPalette="red"
+            value={Number(values.intensity)}
+            onValueChange={(e) =>
+              setValues((v) => ({ ...v, intensity: String(e.value) }))
+            }
+            aria-label="Intensity in hearts"
+          >
+            <RatingGroup.HiddenInput />
+            <RatingGroup.Control>
+              {Array.from({ length: 5 }, (_, i) => (
+                <RatingGroup.Item key={i} index={i + 1}>
+                  <RatingGroup.ItemIndicator icon={<LuHeart fill="currentColor" />} />
+                </RatingGroup.Item>
+              ))}
+            </RatingGroup.Control>
+          </RatingGroup.Root>
+          {Number(values.intensity) > 0 && (
+            <Button
+              variant="ghost"
+              size="xs"
+              colorPalette="gray"
+              onClick={() => setValues((v) => ({ ...v, intensity: "0" }))}
+            >
+              Clear
+            </Button>
+          )}
+        </HStack>
+        <Field.HelperText>
+          Tap the hearts to rate how hard it was — leave empty if unrated.
+        </Field.HelperText>
       </Field.Root>
       <Flex
         gap="3"
@@ -278,19 +305,25 @@ function PickClassPanel({ onDone }: { onDone: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const collection = useMemo(
+    () =>
+      createListCollection({
+        items: (week?.days ?? []).flatMap((day) =>
+          day.classes.map((cls) => ({
+            value: `${cls.pid}|${cls.date}`,
+            label: `${day.weekday} ${cls.date} · ${cls.startTime} · ${cls.name}`,
+            cls,
+          })),
+        ),
+      }),
+    [week],
+  );
+
   if (week === undefined) {
     return null;
   }
 
-  const options = week.days.flatMap((day) =>
-    day.classes.map((cls) => ({
-      key: `${cls.pid}|${cls.date}`,
-      cls,
-      label: `${day.weekday} ${cls.date} · ${cls.startTime} · ${cls.name}`,
-    })),
-  );
-
-  if (options.length === 0) {
+  if (collection.items.length === 0) {
     return (
       <Alert.Root status="info" mt="2">
         <Alert.Indicator />
@@ -304,7 +337,7 @@ function PickClassPanel({ onDone }: { onDone: () => void }) {
     );
   }
 
-  const picked = options.find((o) => o.key === selected)?.cls ?? null;
+  const picked = collection.items.find((o) => o.value === selected)?.cls ?? null;
 
   const submit = () => {
     if (picked === null) return;
@@ -322,20 +355,31 @@ function PickClassPanel({ onDone }: { onDone: () => void }) {
     <Stack gap="4" pt="2">
       <Field.Root>
         <Field.Label>Class</Field.Label>
-        <NativeSelect.Root>
-          <NativeSelect.Field
-            value={selected}
-            onChange={(e) => setSelected(e.target.value)}
-          >
-            <option value="">Choose a class…</option>
-            {options.map((o) => (
-              <option key={o.key} value={o.key}>
-                {o.label}
-              </option>
-            ))}
-          </NativeSelect.Field>
-          <NativeSelect.Indicator />
-        </NativeSelect.Root>
+        <Select.Root
+          collection={collection}
+          value={selected ? [selected] : []}
+          onValueChange={(e) => setSelected(e.value[0] ?? "")}
+        >
+          <Select.HiddenSelect />
+          <Select.Control>
+            <Select.Trigger>
+              <Select.ValueText placeholder="Choose a class…" />
+            </Select.Trigger>
+            <Select.IndicatorGroup>
+              <Select.Indicator />
+            </Select.IndicatorGroup>
+          </Select.Control>
+          <Select.Positioner>
+            <Select.Content>
+              {collection.items.map((item) => (
+                <Select.Item item={item} key={item.value}>
+                  {item.label}
+                  <Select.ItemIndicator />
+                </Select.Item>
+              ))}
+            </Select.Content>
+          </Select.Positioner>
+        </Select.Root>
         <Field.HelperText>
           Name, intensity and Calories are filled from the schedule.
         </Field.HelperText>
@@ -373,63 +417,48 @@ function AddLogDialog({
 }) {
   const addManual = useMutation(api.trainingLogs.addManual);
   return (
-    <Dialog.Root
-      open={open}
-      onOpenChange={(e) => {
-        if (!e.open) onClose();
-      }}
-      placement="center"
-      size={{ base: "full", md: "lg" }}
-      motionPreset="slide-in-bottom"
-    >
-      <Portal>
-        <Dialog.Backdrop />
-        <Dialog.Positioner>
-          <Dialog.Content colorPalette="teal">
-            {open && (
-              <>
-                <Dialog.Header>
-                  <Dialog.Title>Add training log</Dialog.Title>
-                </Dialog.Header>
-                <Dialog.CloseTrigger asChild>
-                  <CloseButton size="sm" />
-                </Dialog.CloseTrigger>
-                <Dialog.Body>
-                  <Tabs.Root defaultValue="pick" fitted>
-                    <Tabs.List>
-                      <Tabs.Trigger value="pick">
-                        <LuCalendarDays /> Pick a class
-                      </Tabs.Trigger>
-                      <Tabs.Trigger value="type">
-                        <LuClipboardList /> Type details
-                      </Tabs.Trigger>
-                    </Tabs.List>
-                    <Tabs.Content value="pick">
-                      <PickClassPanel onDone={onClose} />
-                    </Tabs.Content>
-                    <Tabs.Content value="type">
-                      <ManualLogForm
-                        initial={BLANK_FORM}
-                        submitLabel="Add log"
-                        onSubmit={async (v) => {
-                          await addManual(v);
-                          onClose();
-                        }}
-                      />
-                    </Tabs.Content>
-                  </Tabs.Root>
-                </Dialog.Body>
-                <Dialog.Footer>
-                  <Button variant="outline" onClick={onClose}>
-                    Close
-                  </Button>
-                </Dialog.Footer>
-              </>
-            )}
-          </Dialog.Content>
-        </Dialog.Positioner>
-      </Portal>
-    </Dialog.Root>
+    <SheetDialog open={open} onClose={onClose}>
+      {open && (
+        <>
+          <Dialog.Header>
+            <Dialog.Title>Add training log</Dialog.Title>
+          </Dialog.Header>
+          <Dialog.CloseTrigger asChild>
+            <CloseButton size="sm" />
+          </Dialog.CloseTrigger>
+          <Dialog.Body>
+            <Tabs.Root defaultValue="pick" fitted>
+              <Tabs.List>
+                <Tabs.Trigger value="pick">
+                  <LuCalendarDays /> Pick a class
+                </Tabs.Trigger>
+                <Tabs.Trigger value="type">
+                  <LuClipboardList /> Type details
+                </Tabs.Trigger>
+              </Tabs.List>
+              <Tabs.Content value="pick">
+                <PickClassPanel onDone={onClose} />
+              </Tabs.Content>
+              <Tabs.Content value="type">
+                <ManualLogForm
+                  initial={BLANK_FORM}
+                  submitLabel="Add log"
+                  onSubmit={async (v) => {
+                    await addManual(v);
+                    onClose();
+                  }}
+                />
+              </Tabs.Content>
+            </Tabs.Root>
+          </Dialog.Body>
+          <Dialog.Footer>
+            <Button variant="outline" onClick={onClose}>
+              Close
+            </Button>
+          </Dialog.Footer>
+        </>
+      )}
+    </SheetDialog>
   );
 }
 
@@ -444,54 +473,39 @@ function EditLogDialog({
 }) {
   const editLog = useMutation(api.trainingLogs.editLog);
   return (
-    <Dialog.Root
-      open={log !== null}
-      onOpenChange={(e) => {
-        if (!e.open) onClose();
-      }}
-      placement="center"
-      size={{ base: "full", md: "lg" }}
-      motionPreset="slide-in-bottom"
-    >
-      <Portal>
-        <Dialog.Backdrop />
-        <Dialog.Positioner>
-          <Dialog.Content colorPalette="teal">
-            {log && (
-              <>
-                <Dialog.Header>
-                  <Dialog.Title>Edit training log</Dialog.Title>
-                </Dialog.Header>
-                <Dialog.CloseTrigger asChild>
-                  <CloseButton size="sm" />
-                </Dialog.CloseTrigger>
-                <Dialog.Body>
-                  <ManualLogForm
-                    initial={{
-                      className: log.className,
-                      date: log.date,
-                      intensity: String(log.intensity),
-                      kcalMin: log.kcalMin != null ? String(log.kcalMin) : "",
-                      kcalMax: log.kcalMax != null ? String(log.kcalMax) : "",
-                    }}
-                    submitLabel="Save changes"
-                    onSubmit={async (v) => {
-                      await editLog({ logId: log._id, ...v });
-                      onClose();
-                    }}
-                  />
-                </Dialog.Body>
-                <Dialog.Footer>
-                  <Button variant="outline" onClick={onClose}>
-                    Cancel
-                  </Button>
-                </Dialog.Footer>
-              </>
-            )}
-          </Dialog.Content>
-        </Dialog.Positioner>
-      </Portal>
-    </Dialog.Root>
+    <SheetDialog open={log !== null} onClose={onClose}>
+      {log && (
+        <>
+          <Dialog.Header>
+            <Dialog.Title>Edit training log</Dialog.Title>
+          </Dialog.Header>
+          <Dialog.CloseTrigger asChild>
+            <CloseButton size="sm" />
+          </Dialog.CloseTrigger>
+          <Dialog.Body>
+            <ManualLogForm
+              initial={{
+                className: log.className,
+                date: log.date,
+                intensity: String(log.intensity),
+                kcalMin: log.kcalMin != null ? String(log.kcalMin) : "",
+                kcalMax: log.kcalMax != null ? String(log.kcalMax) : "",
+              }}
+              submitLabel="Save changes"
+              onSubmit={async (v) => {
+                await editLog({ logId: log._id, ...v });
+                onClose();
+              }}
+            />
+          </Dialog.Body>
+          <Dialog.Footer>
+            <Button variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+          </Dialog.Footer>
+        </>
+      )}
+    </SheetDialog>
   );
 }
 

@@ -4,14 +4,15 @@
 
 **Goal:** Encrypt pool-details PII at rest, give the app one consistent width, add an "unofficial app" disclaimer, and surface duplicate-auto-registration feedback.
 
-**Architecture:** Keep pool details in the DB (the server-side AutoBook cron needs them) but store `name/surname/phone` as AES-256-GCM ciphertext, decrypting only server-side for booking and for the owner's own reads. Frontend changes standardize the `AppShell` frame width, add a shared disclaimer dialog reachable from the header, and add UI guards for already-auto-booked classes.
+**Architecture:** Keep pool details in the DB (the server-side AutoBook cron needs them) but store `name/surname/phone` as AES-256-GCM ciphertext. Because Convex's `crypto.subtle` is actions-only, all encrypt/decrypt happens in **actions**: writes go through an action, and the booking actions / a dedicated owner-read action decrypt. Frontend changes standardize the `AppShell` frame width, add a shared disclaimer dialog reachable from the header, and add UI guards for already-auto-booked classes.
 
-**Tech Stack:** Convex (default + Node runtimes), Web Crypto (`crypto.subtle`, AES-GCM), Next.js 16 App Router, Chakra UI v3, vitest + convex-test.
+**Tech Stack:** Convex (default + Node action runtimes), Web Crypto (`crypto.subtle`, AES-GCM), Next.js 16 App Router, Chakra UI v3, vitest + convex-test.
 
 ## Global Constraints
 
 - Convex functions use object syntax: `query({ args, handler })` etc. (per `convex/_generated/ai/guidelines.md`).
-- Never add `"use node";` to a file exporting queries/mutations. `convex/crypto.ts` must work in the **default** runtime (no Node built-ins) — use Web Crypto globals (`crypto.subtle`, `crypto.getRandomValues`, `atob`, `btoa`, `TextEncoder`, `TextDecoder`).
+- Never add `"use node";` to a file exporting queries/mutations. `convex/crypto.ts` uses Web Crypto globals (`crypto.subtle`, `crypto.getRandomValues`, `atob`, `btoa`, `TextEncoder`, `TextDecoder`) and is imported by action files; its functions are only *called* from action contexts.
+- **`crypto.subtle` AES-GCM is ACTIONS-ONLY in Convex** (queries/mutations must stay deterministic), per Convex ≥1.37 (we are on 1.41). ALL encrypt/decrypt happens inside `action`/`internalAction` — NEVER a `query`/`mutation`. Reads needing plaintext are exposed as actions; query/mutation gates pass ciphertext through (callers there need only userId + completeness).
 - `name`, `surname`, `phone` are NEVER stored in plaintext. `email` stays plaintext (auth account identity).
 - Ciphertext format: `v1:<base64(iv)>.<base64(ciphertext)>`, fresh 12-byte IV per encryption.
 - Encryption key: env var `POOL_DETAILS_KEY` = base64 of exactly 32 bytes. Fail closed (throw) if missing/wrong length — never silently store plaintext.
@@ -27,7 +28,7 @@
 - Test: `convex/crypto.test.ts`
 
 **Interfaces:**
-- Produces:
+- Produces (pure helpers; only *called* from actions):
   - `encryptField(plain: string): Promise<string>`
   - `decryptField(stored: string): Promise<string>`
   - `isEncrypted(value: string): boolean`
@@ -157,12 +158,12 @@ export async function decryptPoolFields(f: {
 }
 ```
 
+Note: the unit test runs under vitest/Node where `crypto.subtle` exists; the actions-only constraint is satisfied by DESIGN (these helpers are only called from action functions — Tasks 3–5).
+
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `npx vitest run convex/crypto.test.ts`
 Expected: PASS (3 tests).
-
-If `crypto.subtle` is unavailable in the Convex default runtime at deploy time (it is expected to be available), the fallback is to move encrypt/decrypt into a `"use node"` action module using `node:crypto`; this plan assumes the default-runtime path.
 
 - [ ] **Step 5: Commit**
 
@@ -177,7 +178,7 @@ git commit -m "feat(convex): AES-256-GCM field encryption helpers"
 
 **Files:**
 - Modify: `convex/test.setup.ts`
-- Create: `convex/testHelpers.ts`
+- Create: `convex/testHelpers.ts`, `convex/testHelpers.test.ts`
 
 **Interfaces:**
 - Consumes: `encryptPoolFields` (Task 1).
@@ -249,188 +250,255 @@ git commit -m "test(convex): pool-details encryption key + seed helper"
 
 ---
 
-### Task 3: Encrypt on write, decrypt on owner read
+### Task 3: Encrypt on write (action) + owner decrypt action
 
 **Files:**
-- Modify: `convex/poolDetails.ts` (add `StoredPoolDetails` type)
-- Modify: `convex/poolDetailsOps.ts:69-90` (`setPoolDetails`), `:40-50` (`myPoolDetails`)
-- Test: `convex/poolDetailsOps.test.ts` (existing; verify still green + add ciphertext assertion)
+- Modify: `convex/poolDetails.ts` (add `StoredPoolDetails` type alias)
+- Modify: `convex/poolDetailsOps.ts` — `setPoolDetails` becomes an **action**; add `accountEmail` (internalQuery), `storePoolDetails` (internalMutation), `getPoolDetailsDecrypted` (action). `myPoolDetails` query is UNCHANGED (still returns the stored — now ciphertext — `poolDetails` + `detailsComplete`).
+- Test: `convex/poolDetailsOps.test.ts`
 
 **Interfaces:**
 - Consumes: `encryptPoolFields`, `decryptPoolFields` (Task 1).
-- Produces: stored `users.poolDetails` with ciphertext `name/surname/phone`; `myPoolDetails` returns decrypted `PoolDetails`.
+- Produces:
+  - `api.poolDetailsOps.setPoolDetails` — now an **action**, same args `{ name, surname, phone }`.
+  - `api.poolDetailsOps.getPoolDetailsDecrypted` — action → `MyPoolDetails` with PLAINTEXT `poolDetails` (owner only).
+  - `internal.poolDetailsOps.accountEmail({ userId })` → validated account email or throws `ACCOUNT_EMAIL_MISSING_MESSAGE`.
+  - `internal.poolDetailsOps.storePoolDetails({ userId, encrypted, email })` → persists ciphertext + plaintext email, sets `detailsComplete`.
 
-- [ ] **Step 1: Add the failing assertion that storage is ciphertext**
+- [ ] **Step 1: Update the test to the action API + ciphertext-at-rest**
 
-Add to `convex/poolDetailsOps.test.ts` inside the first describe block:
+In `convex/poolDetailsOps.test.ts`, change the first describe block's `setPoolDetails` calls from `asUser.mutation(...)` to `asUser.action(...)`, read the round-trip via `getPoolDetailsDecrypted`, and add a ciphertext assertion:
 
 ```ts
-  test("stores name/surname/phone as ciphertext, not plaintext", async () => {
-    const t = convexTest(schema, modules);
-    const userId = await t.run((ctx) =>
-      ctx.db.insert("users", { email: ACCOUNT_EMAIL }),
-    );
-    const asUser = t.withIdentity({ subject: userId });
-    await asUser.mutation(api.poolDetailsOps.setPoolDetails, INPUT);
+    await asUser.action(api.poolDetailsOps.setPoolDetails, INPUT);
+    const mine = await asUser.action(api.poolDetailsOps.getPoolDetailsDecrypted, {});
+    expect(mine.detailsComplete).toBe(true);
+    expect(mine.poolDetails).toEqual(STORED); // decrypted round-trip
 
     const raw = await t.run((ctx) => ctx.db.get("users", userId));
-    expect(raw?.poolDetails?.name).toMatch(/^v1:/);
+    expect(raw?.poolDetails?.name).toMatch(/^v1:/); // ciphertext at rest
     expect(raw?.poolDetails?.name).not.toContain("Jonas");
-    expect(raw?.poolDetails?.email).toBe(ACCOUNT_EMAIL); // email stays plaintext
-  });
+    expect(raw?.poolDetails?.email).toBe(ACCOUNT_EMAIL); // email plaintext
 ```
+
+Apply the same `mutation`→`action` change to the second test's two `setPoolDetails` calls and read back via `getPoolDetailsDecrypted`.
 
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run convex/poolDetailsOps.test.ts`
-Expected: FAIL — `poolDetails.name` is `"Jonas"`, not `v1:...`.
+Expected: FAIL — `setPoolDetails` is still a mutation / `getPoolDetailsDecrypted` undefined.
 
 - [ ] **Step 3: Add the stored-shape type**
 
-In `convex/poolDetails.ts`, after the `PoolDetails` type (line 43), add:
+In `convex/poolDetails.ts`, after the `PoolDetails` type (line 43):
 
 ```ts
-/** The at-rest shape: name/surname/phone are AES-GCM ciphertext, email plaintext. */
+/** At-rest shape: name/surname/phone are AES-GCM ciphertext, email plaintext. */
 export type StoredPoolDetails = PoolDetails;
 ```
 
-(The validator shape is unchanged — four strings — so `schema.ts` needs no structural edit. Update the comment at `schema.ts:16` to note the three fields are encrypted at rest.)
+Update the comment at `schema.ts:16` to note the three fields are encrypted at rest.
 
-- [ ] **Step 4: Encrypt in `setPoolDetails`**
+- [ ] **Step 4: Replace `setPoolDetails` with an action + internals**
 
-Replace the `ctx.db.patch` block in `convex/poolDetailsOps.ts` (`setPoolDetails`, lines 84-87) with:
+In `convex/poolDetailsOps.ts`, add imports:
 
 ```ts
-    const encrypted = await encryptPoolFields(result.value);
+import { action, internalMutation, internalQuery } from "./_generated/server";
+import { api, internal } from "./_generated/api";
+import { v } from "convex/values";
+import { decryptPoolFields, encryptPoolFields } from "./crypto";
+```
+
+Replace the whole `setPoolDetails` mutation (lines 69-90) with:
+
+```ts
+export const accountEmail = internalQuery({
+  args: { userId: v.id("users") },
+  handler: async (ctx, { userId }): Promise<string> => {
+    const user = await ctx.db.get("users", userId);
+    const email = user?.email?.trim() ?? "";
+    if (!EMAIL_RE.test(email)) throw new Error(ACCOUNT_EMAIL_MISSING_MESSAGE);
+    return email;
+  },
+});
+
+export const storePoolDetails = internalMutation({
+  args: {
+    userId: v.id("users"),
+    encrypted: v.object({
+      name: v.string(),
+      surname: v.string(),
+      phone: v.string(),
+    }),
+    email: v.string(),
+  },
+  handler: async (ctx, { userId, encrypted, email }): Promise<null> => {
     await ctx.db.patch("users", userId, {
       poolDetails: { ...encrypted, email },
       detailsComplete: true,
     });
+    return null;
+  },
+});
+
+/**
+ * Set/overwrite the caller's pool details. An ACTION because encryption uses
+ * `crypto.subtle` (Convex actions-only): validate -> fetch the account email ->
+ * encrypt name/surname/phone -> persist via the internal mutation.
+ */
+export const setPoolDetails = action({
+  args: poolDetailsInputValidator.fields,
+  handler: async (ctx, args): Promise<null> => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) throw new Error("Not authenticated");
+    const result = validatePoolDetails(args);
+    if (!result.ok) throw new Error(result.error);
+    const email = await ctx.runQuery(internal.poolDetailsOps.accountEmail, {
+      userId,
+    });
+    const encrypted = await encryptPoolFields(result.value);
+    await ctx.runMutation(internal.poolDetailsOps.storePoolDetails, {
+      userId,
+      encrypted,
+      email,
+    });
+    return null;
+  },
+});
 ```
 
-Add the import at the top of `poolDetailsOps.ts`:
+- [ ] **Step 5: Add the owner decrypt action**
+
+Append to `convex/poolDetailsOps.ts`:
 
 ```ts
-import { decryptPoolFields, encryptPoolFields } from "./crypto";
-```
-
-- [ ] **Step 5: Decrypt in `myPoolDetails`**
-
-Replace the `myPoolDetails` handler return (lines 44-48) with:
-
-```ts
-    const user = await ctx.db.get("users", userId);
-    const stored = user?.poolDetails ?? null;
+/** The caller's OWN pool details, decrypted (action — decryption is actions-only).
+ * Used by the settings/onboarding form to prefill. */
+export const getPoolDetailsDecrypted = action({
+  args: {},
+  handler: async (ctx): Promise<MyPoolDetails> => {
+    const mine: MyPoolDetails = await ctx.runQuery(
+      api.poolDetailsOps.myPoolDetails,
+      {},
+    );
+    if (!mine.poolDetails) return mine;
+    const dec = await decryptPoolFields(mine.poolDetails);
     return {
-      poolDetails: stored
-        ? { ...(await decryptPoolFields(stored)), email: stored.email }
-        : null,
-      detailsComplete: user?.detailsComplete ?? false,
+      detailsComplete: mine.detailsComplete,
+      poolDetails: { ...dec, email: mine.poolDetails.email },
     };
+  },
+});
 ```
+
+(`myPoolDetails` query stays exactly as-is — it now returns ciphertext, which is fine for the action gate that decrypts; the client form no longer reads it.)
 
 - [ ] **Step 6: Run tests to verify they pass**
 
 Run: `npx vitest run convex/poolDetailsOps.test.ts`
-Expected: PASS — the `toEqual(STORED)` round-trip holds (myPoolDetails decrypts), plus the new ciphertext-at-rest test.
+Expected: PASS.
 
 - [ ] **Step 7: Commit**
 
 ```bash
 git add convex/poolDetails.ts convex/poolDetailsOps.ts convex/poolDetailsOps.test.ts convex/schema.ts
-git commit -m "feat(convex): encrypt pool details at rest, decrypt for owner"
+git commit -m "feat(convex): encrypt pool details on write via action + owner decrypt action"
 ```
 
 ---
 
-### Task 4: Decrypt in the booking gates + AutoBook cron
+### Task 4: Decrypt in action contexts (booking + AutoBook)
 
 **Files:**
-- Modify: `convex/poolDetailsOps.ts` (`requirePoolDetails` lines 104-113)
-- Modify: `convex/autoBook.ts` (`ruleContext` line 221)
-- Test: `convex/book.test.ts`, `convex/autoBook.test.ts` (update any direct `poolDetails` seeds to use `encryptedPoolDetails`)
+- Modify: `convex/poolDetailsOps.ts` (`requirePoolDetailsForAction` — decrypt)
+- Modify: `convex/autoBookAttempt.ts` (`attemptRule` — decrypt before `bookAndRecord`)
+- Test: `convex/book.test.ts`, `convex/autoBook.test.ts`, `convex/poolDetailsOps.test.ts`
 
 **Interfaces:**
 - Consumes: `decryptPoolFields` (Task 1), `encryptedPoolDetails` (Task 2).
-- Note: `requirePoolDetailsForAction` already delegates to `myPoolDetails` (now decrypting), so it needs no change.
+- Unchanged: `requirePoolDetails` (query/mutation gate) returns the stored ciphertext + userId; its only production caller (`autoBookRules.createFromClass`) uses just `userId`. `ruleContext` (internalQuery) still returns ciphertext in its `ready` verdict.
 
-- [ ] **Step 1: Find direct pool-details seeds in the booking tests**
+- [ ] **Step 1: Fix the requirePoolDetails gate test (returns ciphertext now)**
 
-Run: `npx vitest run convex/book.test.ts convex/autoBook.test.ts`
-Expected: FAIL after Step 2/3 unless seeds are encrypted — first, locate seeds:
-Run: search for `poolDetails:` in `convex/book.test.ts` and `convex/autoBook.test.ts`.
-
-- [ ] **Step 2: Decrypt in `requirePoolDetails`**
-
-Replace the return in `convex/poolDetailsOps.ts` `requirePoolDetails` (lines 108-112) with:
+In `convex/poolDetailsOps.test.ts`, the `requirePoolDetails` gate test asserts `gated.poolDetails` equals plaintext `STORED`. The gate now returns ciphertext; change it to:
 
 ```ts
-  const user = await ctx.db.get("users", userId);
-  if (!hasCompleteDetails(user)) {
-    throw new Error(POOL_DETAILS_INCOMPLETE_MESSAGE);
-  }
-  const poolDetails = {
-    ...(await decryptPoolFields(user.poolDetails)),
-    email: user.poolDetails.email,
+    const gated = await asUser.query((ctx) => requirePoolDetails(ctx));
+    expect(gated.userId).toBe(userId);
+    expect(gated.poolDetails.name).toMatch(/^v1:/);
+```
+
+Seed that test's user with `encryptedPoolDetails(...)` (import from `./testHelpers`) instead of an inline plaintext `poolDetails`.
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `npx vitest run convex/poolDetailsOps.test.ts convex/book.test.ts convex/autoBook.test.ts`
+Expected: FAIL — gates/booking operate on ciphertext until Steps 3-4.
+
+- [ ] **Step 3: Decrypt in `requirePoolDetailsForAction`**
+
+In `convex/poolDetailsOps.ts`, replace the return of `requirePoolDetailsForAction` (`return { userId, poolDetails: details.poolDetails };`) with:
+
+```ts
+  const dec = await decryptPoolFields(details.poolDetails);
+  return {
+    userId,
+    poolDetails: { ...dec, email: details.poolDetails.email },
   };
-  return { userId, poolDetails };
 ```
 
-- [ ] **Step 3: Decrypt in `ruleContext`**
+(Runs in ActionCtx — `crypto.subtle` allowed. `bookNow` consumes it unchanged.)
 
-Replace the `ready` return in `convex/autoBook.ts` (line 221) with:
+- [ ] **Step 4: Decrypt the verdict in `attemptRule`**
+
+In `convex/autoBookAttempt.ts`, import `decryptPoolFields` from `./crypto`, and in the `book` branch decrypt before `bookAndRecord`:
 
 ```ts
-    return {
-      kind: "ready",
-      userId,
-      pid: cls.pid,
-      poolDetails: {
-        ...(await decryptPoolFields(owner.poolDetails)),
-        email: owner.poolDetails.email,
-      },
-    };
+    const dec = await decryptPoolFields(plan.poolDetails);
+    const { status, bookingId } = await bookAndRecord(ctx, {
+      userId: plan.userId,
+      pid: plan.pid,
+      date,
+      poolDetails: { ...dec, email: plan.poolDetails.email },
+      source: "rule",
+      ruleId,
+    });
 ```
 
-Add to `convex/autoBook.ts` imports: `import { decryptPoolFields } from "./crypto";`
+- [ ] **Step 5: Encrypt all direct pool-details seeds in booking tests**
 
-- [ ] **Step 4: Update test seeds**
-
-For every direct `ctx.db.insert("users", { ..., poolDetails: { name, surname, phone, email } })` (or `ctx.db.patch`) in `book.test.ts` / `autoBook.test.ts`, replace the inline `poolDetails` object with `await encryptedPoolDetails({ name, surname, phone }, email)` (import from `./testHelpers`). Example transform:
+For every `ctx.db.insert("users", { ..., poolDetails: {...} })` / `ctx.db.patch` in `book.test.ts` and `autoBook.test.ts`, replace the inline `poolDetails` with `await encryptedPoolDetails({ name, surname, phone }, email)` (import from `./testHelpers`). Example:
 
 ```ts
-// before
-poolDetails: { name: "Jonas", surname: "Jonaitis", phone: "+37061234567", email: "jonas@example.com" },
-// after
 poolDetails: await encryptedPoolDetails(
   { name: "Jonas", surname: "Jonaitis", phone: "+37061234567" },
   "jonas@example.com",
 ),
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [ ] **Step 6: Run tests to verify they pass**
 
-Run: `npx vitest run convex/book.test.ts convex/autoBook.test.ts convex/poolDetailsOps.test.ts`
-Expected: PASS — booking and cron paths decrypt correctly.
+Run: `npx vitest run convex/poolDetailsOps.test.ts convex/book.test.ts convex/autoBook.test.ts`
+Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add convex/poolDetailsOps.ts convex/autoBook.ts convex/book.test.ts convex/autoBook.test.ts
-git commit -m "feat(convex): decrypt pool details in booking + autobook paths"
+git add convex/poolDetailsOps.ts convex/autoBookAttempt.ts convex/poolDetailsOps.test.ts convex/book.test.ts convex/autoBook.test.ts
+git commit -m "feat(convex): decrypt pool details in booking + autobook actions"
 ```
 
 ---
 
-### Task 5: One-off migration of existing rows
+### Task 5: One-off migration of existing rows (action)
 
 **Files:**
-- Create: `convex/migrations.ts`
-- Test: `convex/migrations.test.ts`
+- Create: `convex/migrations.ts`, `convex/migrations.test.ts`
 
 **Interfaces:**
-- Consumes: `encryptField`, `isEncrypted` (Task 1).
-- Produces: `internal.migrations.migratePoolDetailsToEncrypted` (internalMutation) → `{ migrated: number }`.
+- Consumes: `encryptField`, `isEncrypted` (Task 1), `poolDetailsValidator` (poolDetails.ts).
+- Produces: `internal.migrations.migratePoolDetailsToEncrypted` (**internalAction**) → `{ migrated: number }`; plus `internal.migrations.listForMigration` (internalQuery) and `internal.migrations.patchPoolDetails` (internalMutation).
 
 - [ ] **Step 1: Write the failing test**
 
@@ -456,18 +524,16 @@ describe("migratePoolDetailsToEncrypted", () => {
       }),
     );
 
-    const first = await t.mutation(internal.migrations.migratePoolDetailsToEncrypted, {});
+    const first = await t.action(internal.migrations.migratePoolDetailsToEncrypted, {});
     expect(first.migrated).toBe(1);
 
     const row = await t.run((ctx) => ctx.db.get("users", userId));
     expect(isEncrypted(row!.poolDetails!.name)).toBe(true);
     expect(await decryptPoolFields(row!.poolDetails!)).toEqual({
-      name: "Jonas",
-      surname: "J",
-      phone: "+37061234567",
+      name: "Jonas", surname: "J", phone: "+37061234567",
     });
 
-    const second = await t.mutation(internal.migrations.migratePoolDetailsToEncrypted, {});
+    const second = await t.action(internal.migrations.migratePoolDetailsToEncrypted, {});
     expect(second.migrated).toBe(0); // idempotent
   });
 });
@@ -476,32 +542,61 @@ describe("migratePoolDetailsToEncrypted", () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run convex/migrations.test.ts`
-Expected: FAIL — cannot find `internal.migrations`.
+Expected: FAIL — `internal.migrations` undefined.
 
-- [ ] **Step 3: Implement the migration**
+- [ ] **Step 3: Implement the migration (action + internals)**
 
 ```ts
 // convex/migrations.ts
-import { internalMutation } from "./_generated/server";
+import { v } from "convex/values";
+import { internal } from "./_generated/api";
+import { internalAction, internalMutation, internalQuery } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
 import { encryptField, isEncrypted } from "./crypto";
+import { poolDetailsValidator } from "./poolDetails";
+
+/** Users whose poolDetails still hold any plaintext field. */
+export const listForMigration = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const users = await ctx.db.query("users").collect();
+    return users
+      .filter(
+        (u) =>
+          u.poolDetails &&
+          !(
+            isEncrypted(u.poolDetails.name) &&
+            isEncrypted(u.poolDetails.surname) &&
+            isEncrypted(u.poolDetails.phone)
+          ),
+      )
+      .map((u) => ({ userId: u._id, poolDetails: u.poolDetails! }));
+  },
+});
+
+export const patchPoolDetails = internalMutation({
+  args: { userId: v.id("users"), poolDetails: poolDetailsValidator },
+  handler: async (ctx, { userId, poolDetails }): Promise<null> => {
+    await ctx.db.patch("users", userId, { poolDetails });
+    return null;
+  },
+});
 
 /**
- * One-off: encrypt any legacy plaintext name/surname/phone in users.poolDetails.
- * Idempotent — fields already ciphertext (v1:) are left untouched. Run once via
- * `npx convex run migrations:migratePoolDetailsToEncrypted` after deploy.
+ * One-off: encrypt any legacy plaintext name/surname/phone. An action because
+ * encryption is actions-only. Idempotent. Run once after deploy:
+ * `npx convex run migrations:migratePoolDetailsToEncrypted`.
  */
-export const migratePoolDetailsToEncrypted = internalMutation({
+export const migratePoolDetailsToEncrypted = internalAction({
   args: {},
   handler: async (ctx): Promise<{ migrated: number }> => {
-    const users = await ctx.db.query("users").collect();
-    let migrated = 0;
-    for (const u of users) {
-      const pd = u.poolDetails;
-      if (!pd) continue;
-      if (isEncrypted(pd.name) && isEncrypted(pd.surname) && isEncrypted(pd.phone)) {
-        continue;
-      }
-      await ctx.db.patch("users", u._id, {
+    const rows: {
+      userId: Id<"users">;
+      poolDetails: { name: string; surname: string; phone: string; email: string };
+    }[] = await ctx.runQuery(internal.migrations.listForMigration, {});
+    for (const { userId, poolDetails: pd } of rows) {
+      await ctx.runMutation(internal.migrations.patchPoolDetails, {
+        userId,
         poolDetails: {
           name: isEncrypted(pd.name) ? pd.name : await encryptField(pd.name),
           surname: isEncrypted(pd.surname) ? pd.surname : await encryptField(pd.surname),
@@ -509,9 +604,8 @@ export const migratePoolDetailsToEncrypted = internalMutation({
           email: pd.email,
         },
       });
-      migrated++;
     }
-    return { migrated };
+    return { migrated: rows.length };
   },
 });
 ```
@@ -525,19 +619,52 @@ Expected: PASS.
 
 ```bash
 git add convex/migrations.ts convex/migrations.test.ts
-git commit -m "feat(convex): one-off migration to encrypt existing pool details"
+git commit -m "feat(convex): one-off action to encrypt existing pool details"
 ```
 
 ---
 
-### Task 6: Encryption note on the pool-details form
+### Task 6: Pool-details form uses actions + encryption note
 
 **Files:**
 - Modify: `src/app/pool-details-form.tsx`
 
-- [ ] **Step 1: Add a reassurance line near the submit area**
+**Interfaces:**
+- Consumes: `api.poolDetailsOps.setPoolDetails` (action), `api.poolDetailsOps.getPoolDetailsDecrypted` (action).
 
-In `src/app/pool-details-form.tsx`, add below the fields (above the submit button) a muted line:
+- [ ] **Step 1: Switch save + prefill to actions**
+
+In `src/app/pool-details-form.tsx`:
+- Imports: `import { useAction, useQuery } from "convex/react";` (keep `useQuery` for `currentUser`; drop `useMutation`).
+- Replace lines 58-59 with:
+
+```tsx
+  const loadDetails = useAction(api.poolDetailsOps.getPoolDetailsDecrypted);
+  const save = useAction(api.poolDetailsOps.setPoolDetails);
+```
+
+- Replace the prefill effect (lines 71-79) with a one-shot load on mount:
+
+```tsx
+  useEffect(() => {
+    let active = true;
+    void loadDetails().then((mine) => {
+      if (active && mine.poolDetails) {
+        const { name, surname, phone } = mine.poolDetails;
+        setValues({ name, surname, phone });
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [loadDetails]);
+```
+
+- `handleSubmit` keeps `await save(result.value)` (now the action) — no change there.
+
+- [ ] **Step 2: Add the encryption note**
+
+Below the booking-email `Field.Root` (after line 146), add:
 
 ```tsx
 <Text fontSize="xs" color="fg.muted">
@@ -545,18 +672,18 @@ In `src/app/pool-details-form.tsx`, add below the fields (above the submit butto
 </Text>
 ```
 
-Ensure `Text` is imported from `@chakra-ui/react`.
+Add `Text` to the `@chakra-ui/react` import.
 
-- [ ] **Step 2: Verify build**
+- [ ] **Step 3: Verify**
 
 Run: `npx tsc --noEmit && npx eslint src/app/pool-details-form.tsx`
 Expected: clean.
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
 git add src/app/pool-details-form.tsx
-git commit -m "feat(ui): note that pool details are encrypted at rest"
+git commit -m "feat(ui): pool-details form via encrypt/decrypt actions + at-rest note"
 ```
 
 ---
@@ -568,15 +695,15 @@ git commit -m "feat(ui): note that pool details are encrypted at rest"
 
 - [ ] **Step 1: Standardize the frame**
 
-In `src/app/app-shell.tsx`, keep `maxW = "3xl"` as the default and treat it as the single frame width. (No signature change needed — callers stop overriding it.)
+In `src/app/app-shell.tsx`, keep `maxW = "3xl"` as the default and treat it as the single frame width. (No signature change — callers stop overriding it.)
 
 - [ ] **Step 2: Signin — narrow content, not the frame**
 
-In `src/app/signin/page.tsx`, change `<AppShell maxW="md">` to `<AppShell>`. The `AuthForm` is already `maxW="sm"` and centered by the wrapping `Flex`, so the form stays compact inside the 3xl frame.
+In `src/app/signin/page.tsx`, change `<AppShell maxW="md">` to `<AppShell>`. `AuthForm` is already `maxW="sm"` and centered by the wrapping `Flex`, so it stays compact inside the 3xl frame.
 
 - [ ] **Step 3: Settings — narrow content, not the frame**
 
-In `src/app/settings/page.tsx`, change `<AppShell maxW="lg" ...>` to `<AppShell ...>` and wrap the inner `Stack` content in a `maxW="lg"` block:
+In `src/app/settings/page.tsx`, change `<AppShell maxW="lg" ...>` to `<AppShell ...>` and wrap the inner content:
 
 ```tsx
 <Stack gap="6" maxW="lg">
@@ -585,7 +712,7 @@ In `src/app/settings/page.tsx`, change `<AppShell maxW="lg" ...>` to `<AppShell 
 - [ ] **Step 4: Verify**
 
 Run: `npx tsc --noEmit && npx eslint src/app/app-shell.tsx src/app/signin/page.tsx src/app/settings/page.tsx`
-Expected: clean. Browser check: header brand/edges align across dashboard, settings, signin.
+Expected: clean. Browser: header brand/edges align across dashboard, settings, signin.
 
 - [ ] **Step 5: Commit**
 
@@ -651,7 +778,7 @@ export function DisclaimerDialog({
 
 - [ ] **Step 2: Wire the info icon + first-visit auto-open into AppShell**
 
-Convert `AppShell` to own disclaimer state. Add imports: `useEffect, useState` from `react`; `IconButton` from `@chakra-ui/react`; `LuInfo` from `react-icons/lu`; `DisclaimerDialog` from `./disclaimer-dialog`. Inside the component:
+Add imports to `src/app/app-shell.tsx`: `useEffect, useState` from `react`; `IconButton` from `@chakra-ui/react`; `LuInfo` from `react-icons/lu`; `DisclaimerDialog` from `./disclaimer-dialog`. Inside the component:
 
 ```tsx
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -663,7 +790,7 @@ Convert `AppShell` to own disclaimer state. Add imports: `useEffect, useState` f
   }, []);
 ```
 
-In the header actions `HStack`, add the info button before `<ColorModeButton />`:
+In the header actions `HStack`, add before `<ColorModeButton />`:
 
 ```tsx
 <IconButton
@@ -685,7 +812,7 @@ And render the dialog once, after the content `Container` (still inside the root
 - [ ] **Step 3: Verify**
 
 Run: `npx tsc --noEmit && npx eslint src/app/app-shell.tsx src/app/disclaimer-dialog.tsx`
-Expected: clean. Browser: info icon shows on every screen; dialog auto-opens once for a fresh `localStorage`, reopens via the icon.
+Expected: clean. Browser: info icon on every screen; dialog auto-opens once for a fresh `localStorage`, reopens via the icon.
 
 - [ ] **Step 4: Commit**
 
@@ -699,7 +826,7 @@ git commit -m "feat(ui): unofficial-app disclaimer dialog with header info icon"
 ### Task 9: Duplicate auto-registration feedback
 
 **Files:**
-- Create: `src/app/dashboard/rule-match.ts` (pure matcher) + `src/app/dashboard/rule-match.test.ts`
+- Create: `src/app/dashboard/rule-match.ts` + `src/app/dashboard/rule-match.test.ts`
 - Modify: `src/app/dashboard/auto-book-rules.tsx` (`AddRuleBody` picker)
 - Modify: `src/app/dashboard/class-detail.tsx` (`AutoBookWeekly`)
 
@@ -717,7 +844,7 @@ import { hasEnabledRuleForClass } from "./rule-match";
 const rule = (over: Partial<{ weekday: number; startTime: string; nameMatch: string; enabled: boolean }> = {}) => ({
   weekday: 5, startTime: "07:00", nameMatch: "TRX", enabled: true, ...over,
 });
-const cls = { date: "2026-06-19", startTime: "07:00", name: "TRX" }; // 2026-06-19 is a Friday (ISO weekday 5)
+const cls = { date: "2026-06-19", startTime: "07:00", name: "TRX" }; // Friday = ISO weekday 5
 
 describe("hasEnabledRuleForClass", () => {
   test("matches an enabled rule on weekday+time+name", () => {
@@ -766,11 +893,11 @@ Expected: PASS.
 
 - [ ] **Step 5: Mark already-ruled classes in the Add-rule picker**
 
-In `src/app/dashboard/auto-book-rules.tsx` `AddRuleBody`: add `const rules = useQuery(api.autoBookRules.listMine) ?? [];`. When building the Select `collection` items, compute `disabled: hasEnabledRuleForClass(rules, cls)` and append " · already auto-booked" to the label when disabled. Pass `disabled` through to `<Select.Item item={item}>` (Chakra `Select.Item` respects an item's `disabled` via the collection's `isItemDisabled`, configured on `createListCollection({ items, isItemDisabled: (i) => i.disabled })`). Import `hasEnabledRuleForClass` from `./rule-match`.
+In `src/app/dashboard/auto-book-rules.tsx` `AddRuleBody`: add `const rules = useQuery(api.autoBookRules.listMine) ?? [];`. Build the Select collection with `createListCollection({ items, isItemDisabled: (i) => i.disabled })`, where each item gets `disabled: hasEnabledRuleForClass(rules, cls)` and a " · already auto-booked" suffix on the label when disabled. Import `hasEnabledRuleForClass` from `./rule-match`.
 
 - [ ] **Step 6: Disable "Auto-book weekly" when a rule exists**
 
-In `src/app/dashboard/class-detail.tsx` `AutoBookWeekly`: add `const rules = useQuery(api.autoBookRules.listMine) ?? [];` and `const already = hasEnabledRuleForClass(rules, cls);`. When `already`, render the button disabled labeled "Already auto-booking" and a one-line note instead of the create flow. Import `hasEnabledRuleForClass` from `./rule-match`.
+In `src/app/dashboard/class-detail.tsx` `AutoBookWeekly`: add `const rules = useQuery(api.autoBookRules.listMine) ?? [];` and `const already = hasEnabledRuleForClass(rules, cls);`. When `already`, render the button disabled labeled "Already auto-booking" with a one-line note instead of the create flow. Import `hasEnabledRuleForClass` from `./rule-match`.
 
 - [ ] **Step 7: Verify**
 
@@ -808,13 +935,15 @@ After deploying, set `POOL_DETAILS_KEY` (base64 of 32 random bytes) on the Conve
 ## Self-Review
 
 **Spec coverage:**
-- #1 encryption → Tasks 1–6 (helpers, key, store/read, gates+cron, migration, UI note). ✓
+- #1 encryption → Tasks 1–6 (helpers, key, action-based store + owner decrypt, action-context decrypt for booking/cron, migration action, form note). ✓
 - #2 width → Task 7. ✓
 - #3 disclaimer → Task 8. ✓
 - #4 dup auto-rule → Task 9. ✓
 
-**Placeholder scan:** No TBD/TODO; every code step has concrete code. The Convex-runtime crypto fallback is stated once as a known contingency, not a placeholder.
+**Actions-only correction (verified against Convex docs):** `crypto.subtle` is actions-only, so encryption lives in `setPoolDetails` (action) + `migratePoolDetailsToEncrypted` (internalAction); decryption lives in `getPoolDetailsDecrypted`/`requirePoolDetailsForAction`/`attemptRule` (all actions). `myPoolDetails`, `requirePoolDetails`, `ruleContext` stay in query/mutation context and pass ciphertext through (their consumers need only userId + completeness, except action consumers that decrypt).
 
-**Type consistency:** `encryptPoolFields`/`decryptPoolFields` operate on `{name,surname,phone}` everywhere; stored `poolDetails` keeps the `{name,surname,phone,email}` four-string shape; `MyPoolDetails`/`PoolDetails` returns stay plaintext. `hasEnabledRuleForClass(rules, cls)` signature is consistent across Tasks 9 steps. `POOL_DETAILS_KEY` test value (`MDEy…`) is identical in Tasks 1 and 2.
+**Placeholder scan:** No TBD/TODO; every code step has concrete code.
 
-**Risk note:** the booking/autobook test seeds must all route through `encryptedPoolDetails` (Task 4 Step 4) — missing one will surface as a decrypt error in Task 4 Step 5.
+**Type consistency:** `encryptPoolFields`/`decryptPoolFields` operate on `{name,surname,phone}` everywhere; stored `poolDetails` keeps the `{name,surname,phone,email}` four-string shape; `MyPoolDetails`/`PoolDetails` plaintext returns only from action paths. `hasEnabledRuleForClass(rules, cls)` consistent across Task 9. `POOL_DETAILS_KEY` test value (`MDEy…`) identical in Tasks 1 and 2.
+
+**Risk note:** the booking/autobook test seeds must all route through `encryptedPoolDetails` (Task 4 Step 5) — a missed seed surfaces as a decrypt error in Task 4 Step 6. `convex-test` runs in Node (where `crypto.subtle` exists), so it will NOT catch an accidental crypto call placed in a query/mutation — keep all crypto calls in action functions per the Global Constraints.

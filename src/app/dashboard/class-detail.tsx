@@ -6,10 +6,9 @@ import {
   Button,
   Card,
   CloseButton,
-  DataList,
+  SimpleGrid,
   Dialog,
   HStack,
-  Portal,
   Span,
   Stack,
   Stat,
@@ -30,6 +29,8 @@ import {
 } from "../../../convex/week";
 import { CompleteDetailsPrompt } from "../complete-details-prompt";
 import { Intensity } from "./intensity";
+import { SheetDialog } from "./sheet-dialog";
+import { hasEnabledRuleForClass } from "./rule-match";
 
 const STATUS_META: Record<
   ClassStatus,
@@ -257,6 +258,7 @@ type AutoBookState =
  */
 function AutoBookWeekly({ cls }: { cls: Doc<"classes"> }) {
   const details = useQuery(api.poolDetailsOps.myPoolDetails);
+  const rules = useQuery(api.autoBookRules.listMine) ?? [];
   const createRule = useMutation(api.autoBookRules.createFromClass);
   const [state, setState] = useState<AutoBookState>({ kind: "idle" });
 
@@ -270,6 +272,21 @@ function AutoBookWeekly({ cls }: { cls: Doc<"classes"> }) {
   }
 
   const weekday = weekdayLabel(isoWeekday(cls.date));
+
+  const already = hasEnabledRuleForClass(rules, cls);
+  if (already) {
+    return (
+      <Stack gap="3">
+        <Button variant="outline" disabled w={{ base: "full", sm: "auto" }}>
+          Already auto-booking
+        </Button>
+        <Text fontSize="xs" color="fg.muted">
+          You already auto-book “{cls.name}” every {weekday} at {cls.startTime}.
+          Manage it under Auto-book rules.
+        </Text>
+      </Stack>
+    );
+  }
   const onCreate = () => {
     setState({ kind: "saving" });
     createRule({ pid: cls.pid, date: cls.date })
@@ -342,25 +359,9 @@ export function ClassDetailDialog({
   onClose: () => void;
 }) {
   return (
-    <Dialog.Root
-      open={cls !== null}
-      onOpenChange={(e) => {
-        if (!e.open) onClose();
-      }}
-      size={{ base: "full", md: "lg" }}
-      placement="center"
-      scrollBehavior="inside"
-      motionPreset="slide-in-bottom"
-    >
-      <Portal>
-        <Dialog.Backdrop />
-        <Dialog.Positioner>
-          <Dialog.Content colorPalette="teal">
-            {cls && <DetailContent cls={cls} now={now} onClose={onClose} />}
-          </Dialog.Content>
-        </Dialog.Positioner>
-      </Portal>
-    </Dialog.Root>
+    <SheetDialog open={cls !== null} onClose={onClose}>
+      {cls && <DetailContent cls={cls} now={now} onClose={onClose} />}
+    </SheetDialog>
   );
 }
 
@@ -402,29 +403,32 @@ function DetailContent({
         <Stack gap={{ base: "5", md: "6" }}>
           <LiveSpots cls={cls} />
 
-          <DataList.Root
-            orientation={{ base: "vertical", md: "horizontal" }}
-            gap="3"
-          >
-            <DataList.Item>
-              <DataList.ItemLabel>Date</DataList.ItemLabel>
-              <DataList.ItemValue>{cls.date}</DataList.ItemValue>
-            </DataList.Item>
-            <DataList.Item>
-              <DataList.ItemLabel>Duration</DataList.ItemLabel>
-              <DataList.ItemValue>{duration}</DataList.ItemValue>
-            </DataList.Item>
-            <DataList.Item>
-              <DataList.ItemLabel>Calories</DataList.ItemLabel>
-              <DataList.ItemValue>{kcal}</DataList.ItemValue>
-            </DataList.Item>
-            <DataList.Item>
-              <DataList.ItemLabel>Intensity</DataList.ItemLabel>
-              <DataList.ItemValue>
-                <Intensity value={cls.intensity} />
-              </DataList.ItemValue>
-            </DataList.Item>
-          </DataList.Root>
+          <SimpleGrid columns={2} gapX="6" gapY="4">
+            <Stack gap="1">
+              <Text fontSize="xs" color="fg.muted">
+                Date
+              </Text>
+              <Text fontWeight="medium">{cls.date}</Text>
+            </Stack>
+            <Stack gap="1">
+              <Text fontSize="xs" color="fg.muted">
+                Duration
+              </Text>
+              <Text fontWeight="medium">{duration}</Text>
+            </Stack>
+            <Stack gap="1">
+              <Text fontSize="xs" color="fg.muted">
+                Calories
+              </Text>
+              <Text fontWeight="medium">{kcal}</Text>
+            </Stack>
+            <Stack gap="1">
+              <Text fontSize="xs" color="fg.muted">
+                Intensity
+              </Text>
+              <Intensity value={cls.intensity} />
+            </Stack>
+          </SimpleGrid>
         </Stack>
       </Dialog.Body>
 
