@@ -51,9 +51,10 @@ async function scrapeWeekRows(
  * Each week is fetched and reconciled INDEPENDENTLY: {@link poolGateway} returns
  * that week's parsed classes and each one's event detail, then
  * {@link internal.classes.reconcileWeek} upserts them and deletes the week's
- * vanished future-only classes. A week whose schedule fetch throws is skipped
- * (its cached rows are left intact — never wiped as if "all cancelled"); the
- * other week still reconciles. The gateway returns domain values (HTML parsing
+ * vanished future-only classes. A week whose schedule fetch throws — or returns
+ * an EMPTY scrape (a successful but classless page) — is skipped, its cached
+ * rows left intact rather than wiped as if "all cancelled"; the other week still
+ * reconciles. The gateway returns domain values (HTML parsing
  * lives behind it); tests replace it with a fixture-backed fake. `now` is
  * injectable for tests; production omits it and uses the real clock.
  */
@@ -80,6 +81,19 @@ export const scrapeWeek = internalAction({
         console.error(
           `scrapeWeek: skipping week ${weekStart} after a fetch failure`,
           error,
+        );
+        continue;
+      }
+
+      // A successful HTTP fetch can still yield ZERO classes — a maintenance,
+      // login, or otherwise empty page parses to [] without throwing (the
+      // scrape is a regex over `<li class="single-event">`). Treat that exactly
+      // like a thrown failure: an empty scrape is NOT "all cancelled", so skip
+      // this week's reconcile and leave its cached rows intact (ADR-0006
+      // invariant 2). The other week is independent.
+      if (rows.length === 0) {
+        console.warn(
+          `scrapeWeek: skipping week ${weekStart} — empty scrape, not treating as all-cancelled`,
         );
         continue;
       }

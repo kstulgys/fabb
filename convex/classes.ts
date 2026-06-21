@@ -36,9 +36,11 @@ export type ClassRecord = Infer<typeof classRecord>;
  *     conversion (`attendance.convertCompletedBookings`) reads the cached class
  *     row to build the Training log, so dropping a finished-but-unconverted
  *     class would silently lose attendance.
- *  2. The caller (`pool/scrape.ts`) invokes this only for a week whose schedule
- *     fetched successfully, so an empty/failed fetch is never mistaken for "all
- *     cancelled" and a week's rows are never wiped on a fetch error.
+ *  2. This mutation ASSUMES a successful, non-empty scrape — it does not itself
+ *     guard the empty/failed case. `pool/scrape.ts` skips any week whose fetch
+ *     threw or whose scrape came back empty, so reconcileWeek is never handed
+ *     `classes: []` from a failed/maintenance page and a week's rows are never
+ *     wiped as if "all cancelled".
  *
  * Internal: only the scrape action (and the daily cron behind it) calls this.
  */

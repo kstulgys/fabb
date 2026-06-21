@@ -288,6 +288,45 @@ test("a week whose schedule fetch throws keeps its cached rows; the other week s
   expect(result.deleted).toBe(1);
 });
 
+test("an empty (soft-failure) scrape for a week keeps its cached future rows; the other week still reconciles", async () => {
+  const t = convexTest(schema, modules);
+  // A soft failure: the pool returns HTTP 200 with a maintenance/login/empty
+  // body, so fetchSchedule does NOT throw — it parses to []. The NEXT week
+  // scrapes empty; the current week succeeds.
+  const emptyNextGateway: PoolGateway = {
+    ...fakeGateway,
+    fetchSchedule: async (weekStart) => {
+      if (weekStart === NEXT_WEEK) return [];
+      return classesForWeek(weekStart);
+    },
+  };
+  setPoolGateway(emptyNextGateway);
+
+  // A future, absent-from-scrape class in EACH week.
+  await seedClass(t, { pid: "CUR_GONE", date: "2026-06-20" }); // current week
+  await seedClass(t, { pid: "NEXT_KEEP", date: "2026-06-25" }); // next week
+
+  // An empty scrape must not abort the action.
+  const result = await t.action(internal.pool.scrape.scrapeWeek, { now: NOW });
+
+  const rows = await t.run((ctx) => ctx.db.query("classes").collect());
+  // Current week reconciled: its vanished future class is gone, fixture cached.
+  expect(rows.some((c) => c.pid === "CUR_GONE")).toBe(false);
+  expect(rows.some((c) => c.date >= CURRENT_WEEK && c.date < NEXT_WEEK)).toBe(
+    true,
+  );
+  // Next week's scrape was EMPTY → its cached future row is NOT wiped as if "all
+  // cancelled" (ADR-0006 invariant 2; the empty-scrape guard in scrapeWeek)…
+  expect(rows.some((c) => c.pid === "NEXT_KEEP")).toBe(true);
+  // …and the empty week contributed no fresh fixture rows.
+  expect(rows.some((c) => c.date >= NEXT_WEEK && c.pid !== "NEXT_KEEP")).toBe(
+    false,
+  );
+  // Only the current week was upserted/reconciled (the empty week is skipped).
+  expect(result.upserted).toBe(PER_WEEK);
+  expect(result.deleted).toBe(1);
+});
+
 test("re-running the scrape is idempotent: no duplicates and stable deletions", async () => {
   const t = convexTest(schema, modules);
   setPoolGateway(fakeGateway);

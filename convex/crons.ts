@@ -10,7 +10,9 @@ import { internal } from "./_generated/api";
  * a button and without per-user-view scraping — pool load stays flat at any user
  * count. The scrape ({@link internal.pool.scrape.scrapeWeek}, slice 02) upserts
  * keyed by (pid, date), so a re-run refreshes rows in place and never duplicates
- * them.
+ * them, and it reconciles each successfully-fetched week by deleting the
+ * future-dated rows that vanished from that fresh scrape (ADR-0006 future-only
+ * reconciliation; finished/today rows are always preserved).
  *
  * `crons.cron` takes a UTC spec, so `0 22 * * *` fires ~00:00 Europe/Vilnius
  * (±1h across DST — irrelevant for a refresh), landing well before the 05:00 UTC
@@ -50,10 +52,10 @@ crons.cron(
  * The booking→Training-log conversion cron (issue 10). Hourly, it turns each
  * completed Booking — a held spot (`registered`/`already`) whose class end time
  * has passed (Europe/Vilnius) — into exactly one Training log; see
- * {@link internal.attendance.convertCompletedBookings}. Hourly matches the
- * schedule-refresh cadence and converts each finished class well within the
- * week it stays cached. The conversion is idempotent (dedupe on `bookingId`),
- * so the cadence affects only promptness, never correctness.
+ * {@link internal.attendance.convertCompletedBookings}. Hourly purely for
+ * promptness — the conversion is idempotent (dedupe on `bookingId`), so the
+ * cadence affects only how soon a finished class becomes a Training log, never
+ * correctness.
  */
 crons.interval(
   "convert completed bookings",
