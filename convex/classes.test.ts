@@ -62,6 +62,80 @@ describe("weekClasses", () => {
   });
 });
 
+describe("scheduleWeeks", () => {
+  test("returns both weeks (current then next), grouped Mon→Sun and time-sorted, excluding out-of-window dates", async () => {
+    const t = convexTest(schema, modules);
+    // Pinned to the canonical Thursday (2026-06-18); its Vilnius week is
+    // 2026-06-15 … 06-21 and the next is 06-22 … 06-28.
+    const now = Date.parse("2026-06-18T10:00:00Z");
+
+    const userId = await t.run(async (ctx) => {
+      // Current-week Monday: two classes out of time order (proves sorting).
+      await ctx.db.insert("classes", {
+        date: "2026-06-15", startTime: "09:00", endTime: "09:50", pid: "1",
+        name: "Late", intensity: 2, kcalMin: 500, kcalMax: 800, durationMin: 50,
+      });
+      await ctx.db.insert("classes", {
+        date: "2026-06-15", startTime: "07:00", endTime: "07:50", pid: "2",
+        name: "Early", intensity: 1, durationMin: 50,
+      });
+      // A next-week class must land in week 2, not week 1.
+      await ctx.db.insert("classes", {
+        date: "2026-06-23", startTime: "18:00", endTime: "18:50", pid: "3",
+        name: "NextTue", intensity: 3, durationMin: 45,
+      });
+      // Last week and the week after the window must both be excluded.
+      await ctx.db.insert("classes", {
+        date: "2026-06-08", startTime: "07:00", endTime: "07:50", pid: "4",
+        name: "Old", intensity: 1, durationMin: 50,
+      });
+      await ctx.db.insert("classes", {
+        date: "2026-06-29", startTime: "07:00", endTime: "07:50", pid: "5",
+        name: "Beyond", intensity: 1, durationMin: 50,
+      });
+      return await ctx.db.insert("users", { email: "u@example.com" });
+    });
+
+    const { weeks } = await t
+      .withIdentity({ subject: userId })
+      .query(api.classes.scheduleWeeks, { now });
+
+    expect(weeks).toHaveLength(2);
+
+    // Week 1 is the current Vilnius week, Monday-first and time-sorted.
+    expect(weeks[0].weekStart).toBe("2026-06-15");
+    expect(weeks[0].weekEnd).toBe("2026-06-21");
+    expect(weeks[0].days).toHaveLength(7);
+    expect(weeks[0].days[0].weekday).toBe("Monday");
+    expect(weeks[0].days[6].weekday).toBe("Sunday");
+    expect(weeks[0].days[0].classes.map((c) => c.name)).toEqual([
+      "Early",
+      "Late",
+    ]);
+
+    // Week 2 is the next Vilnius week, holding the next-week class on Tuesday.
+    expect(weeks[1].weekStart).toBe("2026-06-22");
+    expect(weeks[1].weekEnd).toBe("2026-06-28");
+    expect(weeks[1].days).toHaveLength(7);
+    expect(weeks[1].days[1].weekday).toBe("Tuesday");
+    expect(weeks[1].days[1].classes.map((c) => c.name)).toEqual(["NextTue"]);
+
+    // Neither out-of-window class appears in either week.
+    const allNames = weeks.flatMap((w) =>
+      w.days.flatMap((d) => d.classes.map((c) => c.name)),
+    );
+    expect(allNames).not.toContain("Old");
+    expect(allNames).not.toContain("Beyond");
+  });
+
+  test("rejects an unauthenticated caller", async () => {
+    const t = convexTest(schema, modules);
+    await expect(t.query(api.classes.scheduleWeeks, {})).rejects.toThrow(
+      "Not authenticated",
+    );
+  });
+});
+
 describe("upsertClasses", () => {
   const base = {
     date: "2026-06-15", startTime: "07:00", endTime: "07:50", pid: "258",

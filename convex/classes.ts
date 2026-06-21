@@ -3,7 +3,7 @@ import { internalMutation, query } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
 import { caloriesColumns } from "./calories";
 import { requireUserId } from "./users";
-import { WEEKDAY_LABELS, resolveClock, weekDatesFor } from "./week";
+import { WEEKDAY_LABELS, resolveClock, weekDatesFor, weekStartsFor } from "./week";
 
 /**
  * One scraped class row. Calories/duration are optional because the pool omits
@@ -65,6 +65,24 @@ export interface WeekClasses {
 }
 
 /**
+ * Group class rows into a Mon→Sun week. `dates` is the week's seven ISO dates
+ * (Monday first, as {@link weekDatesFor} returns); each day collects the rows
+ * whose `date` matches and sorts them by start time. Pure, so both
+ * {@link weekClasses} and {@link scheduleWeeks} build their days through it and
+ * the grouping/ordering stays identical.
+ */
+export function groupWeek(rows: Doc<"classes">[], dates: string[]): WeekClasses {
+  const days = dates.map((date, i) => ({
+    weekday: WEEKDAY_LABELS[i],
+    date,
+    classes: rows
+      .filter((row) => row.date === date)
+      .sort((a, b) => a.startTime.localeCompare(b.startTime)),
+  }));
+  return { weekStart: dates[0], weekEnd: dates[6], days };
+}
+
+/**
  * The current Mon–Sun week's classes (Europe/Vilnius), grouped by day in
  * Monday-first order. `classes` is shared reference data that every User reads
  * (ADR-0002), so `requireUserId` here is purely an auth gate — it throws for
@@ -76,26 +94,44 @@ export const weekClasses = query({
     await requireUserId(ctx);
 
     const dates = weekDatesFor(resolveClock(now));
-    const weekStart = dates[0];
-    const weekEnd = dates[6];
+    const rows = await ctx.db
+      .query("classes")
+      .withIndex("by_date", (q) =>
+        q.gte("date", dates[0]).lte("date", dates[6]),
+      )
+      .collect();
+
+    return groupWeek(rows, dates);
+  },
+});
+
+/**
+ * The whole Schedule window — the current Mon–Sun week then the next — each
+ * grouped like {@link weekClasses} (ADR-0006: the scrape caches both weeks). The
+ * two Monday starts come from {@link weekStartsFor}; each is expanded to its
+ * seven dates, the 14-day range is read from `by_date` once, and
+ * {@link groupWeek} slices it into the two weeks. Same auth gate as
+ * {@link weekClasses}: `classes` is shared reference data (ADR-0002), so
+ * `requireUserId` only rejects signed-out callers.
+ */
+export const scheduleWeeks = query({
+  args: { now: v.optional(v.number()) },
+  handler: async (ctx, { now }): Promise<{ weeks: WeekClasses[] }> => {
+    await requireUserId(ctx);
+
+    const weekDates = weekStartsFor(resolveClock(now), 2).map((monday) =>
+      weekDatesFor(new Date(`${monday}T12:00:00Z`)),
+    );
+    const windowStart = weekDates[0][0];
+    const windowEnd = weekDates[weekDates.length - 1][6];
 
     const rows = await ctx.db
       .query("classes")
       .withIndex("by_date", (q) =>
-        q.gte("date", weekStart).lte("date", weekEnd),
+        q.gte("date", windowStart).lte("date", windowEnd),
       )
       .collect();
 
-    // Group into the seven known dates. The key set is fixed and the data is a
-    // single week, so a filter per day is simpler than a runtime Map.
-    const days = dates.map((date, i) => ({
-      weekday: WEEKDAY_LABELS[i],
-      date,
-      classes: rows
-        .filter((row) => row.date === date)
-        .sort((a, b) => a.startTime.localeCompare(b.startTime)),
-    }));
-
-    return { weekStart, weekEnd, days };
+    return { weeks: weekDates.map((dates) => groupWeek(rows, dates)) };
   },
 });

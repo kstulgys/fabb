@@ -210,10 +210,10 @@ export function WeekSchedule({ week, now }: { week: WeekClasses; now: Date }) {
           <Icon color="colorPalette.fg" boxSize="5">
             <LuCalendarDays />
           </Icon>
-          <Heading size="md">This week</Heading>
+          <Heading size="md">Schedule</Heading>
         </HStack>
         <Text color="fg.muted" fontSize="sm">
-          {week.weekStart} – {week.weekEnd}. Only the current week is available.
+          {week.weekStart} – {week.weekEnd}
         </Text>
       </Stack>
 
@@ -279,19 +279,75 @@ export function WeekSchedule({ week, now }: { week: WeekClasses; now: Date }) {
   );
 }
 
+/** The "This week / Next week" selector above the day strip. Mirrors the main
+ * nav tabs: the active segment is teal foreground text only (no solid fill), so
+ * the toggle stays within the One Voice teal budget. */
+function WeekToggle({
+  weeks,
+  active,
+  onSelect,
+}: {
+  weeks: WeekClasses[];
+  active: number;
+  onSelect: (index: number) => void;
+}) {
+  return (
+    <HStack gap="1" role="tablist" aria-label="Schedule week">
+      {weeks.map((week, index) => {
+        const isActive = index === active;
+        return (
+          <Box
+            as="button"
+            key={week.weekStart}
+            role="tab"
+            aria-selected={isActive}
+            onClick={() => onSelect(index)}
+            px="3"
+            py="1.5"
+            rounded="md"
+            fontSize="sm"
+            fontWeight="medium"
+            color={isActive ? "colorPalette.fg" : "fg.muted"}
+            _hover={{ bg: "bg.muted" }}
+            _focusVisible={{
+              outline: "2px solid",
+              outlineColor: "colorPalette.focusRing",
+              outlineOffset: "2px",
+            }}
+          >
+            {index === 0 ? "This week" : "Next week"}
+          </Box>
+        );
+      })}
+    </HStack>
+  );
+}
+
 /**
- * Loads the current Mon–Sun week of pool classes from the shared `classes`
- * cache (ADR-0002) — populated by the scrape action, read reactively, never
- * scraped per view — and hands it to {@link WeekSchedule}. Opening a class
+ * Loads the Schedule window (the current Mon–Sun week and the next) from the
+ * shared `classes` cache (ADR-0002) — populated by the scrape action, read
+ * reactively, never scraped per view — and lets the User toggle between the two
+ * weeks, handing the selected one to {@link WeekSchedule}. Opening a class
  * fetches its volatile free-spot count live (never cached).
  */
 export function WeekCalendar() {
-  const week = useQuery(api.classes.weekClasses, {});
+  const data = useQuery(api.classes.scheduleWeeks, {});
+  const [active, setActive] = useState(0);
 
-  if (week === undefined) {
+  if (data === undefined) {
     return <ScheduleSkeleton />;
   }
 
+  const { weeks } = data;
+  const week = weeks[active] ?? weeks[0];
+
   // One "now" for this render drives every status marking and the open dialog.
-  return <WeekSchedule week={week} now={new Date()} />;
+  // Keying WeekSchedule by the week resets its naive day default (today, else
+  // the week's Monday) whenever the User switches weeks.
+  return (
+    <Stack gap="5">
+      <WeekToggle weeks={weeks} active={active} onSelect={setActive} />
+      <WeekSchedule key={week.weekStart} week={week} now={new Date()} />
+    </Stack>
+  );
 }
