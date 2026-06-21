@@ -21,17 +21,36 @@ export const classRecord = v.object({
 });
 
 /** A single scraped class as written to the cache (the scrape action builds
- * these and hands them to {@link upsertClasses}). */
+ * these and hands them to {@link reconcileWeek}). */
 export type ClassRecord = Infer<typeof classRecord>;
 
 /**
- * Upsert scraped classes into the shared cache, keyed by `(pid, date)` so
- * re-running the scrape refreshes rows in place and never creates duplicates.
- * Internal: only the scrape action (and later, the cron) calls this.
+ * Reconcile one successfully-fetched week against its fresh scrape, in a single
+ * transaction: upsert every scraped row in place (keyed by `(pid, date)`, so a
+ * changed class refreshes and a re-run never duplicates), then delete the cached
+ * rows in `[weekStart, weekEnd]` that VANISHED from the scrape — but only those
+ * with `date > today` (Europe/Vilnius).
+ *
+ * Two invariants keep the delete safe (ADR-0006):
+ *  1. A finished/today class (`date <= today`) is NEVER deleted: the attendance
+ *     conversion (`attendance.convertCompletedBookings`) reads the cached class
+ *     row to build the Training log, so dropping a finished-but-unconverted
+ *     class would silently lose attendance.
+ *  2. The caller (`pool/scrape.ts`) invokes this only for a week whose schedule
+ *     fetched successfully, so an empty/failed fetch is never mistaken for "all
+ *     cancelled" and a week's rows are never wiped on a fetch error.
+ *
+ * Internal: only the scrape action (and the daily cron behind it) calls this.
  */
-export const upsertClasses = internalMutation({
-  args: { classes: v.array(classRecord) },
-  handler: async (ctx, { classes }) => {
+export const reconcileWeek = internalMutation({
+  args: {
+    classes: v.array(classRecord),
+    weekStart: v.string(),
+    weekEnd: v.string(),
+    today: v.string(),
+  },
+  handler: async (ctx, { classes, weekStart, weekEnd, today }) => {
+    // 1. Upsert every scraped row in place — a changed class refreshes here.
     for (const row of classes) {
       const existing = await ctx.db
         .query("classes")
@@ -45,7 +64,28 @@ export const upsertClasses = internalMutation({
         await ctx.db.insert("classes", row);
       }
     }
-    return { upserted: classes.length };
+
+    // 2. Delete the week's vanished FUTURE classes: a cached row in range that
+    //    is absent from the fresh scrape AND strictly after today. Finished and
+    //    today rows (`date <= today`) are preserved — the attendance guard
+    //    (invariant 1).
+    const scraped = new Set(classes.map((row) => `${row.pid}\u0000${row.date}`));
+    const cached = await ctx.db
+      .query("classes")
+      .withIndex("by_date", (q) =>
+        q.gte("date", weekStart).lte("date", weekEnd),
+      )
+      .collect();
+
+    let deleted = 0;
+    for (const row of cached) {
+      if (row.date <= today) continue; // never delete finished/today
+      if (scraped.has(`${row.pid}\u0000${row.date}`)) continue; // still offered
+      await ctx.db.delete("classes", row._id);
+      deleted += 1;
+    }
+
+    return { upserted: classes.length, deleted };
   },
 });
 

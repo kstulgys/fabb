@@ -2,7 +2,7 @@ import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import { internalAction } from "../_generated/server";
 import type { ClassRecord } from "../classes";
-import { resolveClock, weekStartsFor } from "../week";
+import { resolveClock, todayDate, weekDatesFor, weekStartsFor } from "../week";
 import { type PoolGateway, poolGateway } from "./gateway";
 
 /**
@@ -15,8 +15,8 @@ const SCHEDULE_WEEKS = 2;
 /**
  * Scrape one week's `?nuo=<weekStart>` page into cache rows: the week's classes,
  * each enriched with its stable event-modal detail (calories, duration). Kept a
- * standalone per-week step so the daily refresh can later reconcile vanished
- * classes one week at a time (ADR-0006) without reshaping this loop.
+ * standalone per-week step so the daily refresh reconciles each week
+ * independently (ADR-0006) — a fetch failure isolates to that one week.
  */
 async function scrapeWeekRows(
   gateway: PoolGateway,
@@ -44,31 +44,58 @@ async function scrapeWeekRows(
 }
 
 /**
- * Scrape the two-week Schedule window (current + next, Europe/Vilnius) and
- * upsert the stable fields into the `classes` cache. Manually invocable for now
- * (e.g. `npx convex run pool/scrape:scrapeWeek`); a later slice schedules it
- * daily (ADR-0006).
+ * Refresh the two-week Schedule window (current + next, Europe/Vilnius) so the
+ * `classes` cache mirrors the pool. Manually invocable (`npx convex run
+ * pool/scrape:scrapeWeek`); the daily cron drives it in production (ADR-0006).
  *
- * The flow: resolve the window's Monday starts → for each week, {@link
- * poolGateway} returns that week's parsed classes and each one's event detail →
- * one idempotent {@link internal.classes.upsertClasses} over every collected
- * row. The gateway returns domain values (HTML parsing lives behind it); tests
- * replace it with a fixture-backed fake. `now` is injectable for tests;
- * production omits it and uses the real clock.
+ * Each week is fetched and reconciled INDEPENDENTLY: {@link poolGateway} returns
+ * that week's parsed classes and each one's event detail, then
+ * {@link internal.classes.reconcileWeek} upserts them and deletes the week's
+ * vanished future-only classes. A week whose schedule fetch throws is skipped
+ * (its cached rows are left intact — never wiped as if "all cancelled"); the
+ * other week still reconciles. The gateway returns domain values (HTML parsing
+ * lives behind it); tests replace it with a fixture-backed fake. `now` is
+ * injectable for tests; production omits it and uses the real clock.
  */
 export const scrapeWeek = internalAction({
   args: { now: v.optional(v.number()) },
-  handler: async (ctx, { now }): Promise<{ upserted: number }> => {
+  handler: async (
+    ctx,
+    { now },
+  ): Promise<{ upserted: number; deleted: number }> => {
     const gateway = poolGateway();
-    const weekStarts = weekStartsFor(resolveClock(now), SCHEDULE_WEEKS);
+    const clock = resolveClock(now);
+    const today = todayDate(clock);
+    const weekStarts = weekStartsFor(clock, SCHEDULE_WEEKS);
 
-    const rows: ClassRecord[] = [];
+    let upserted = 0;
+    let deleted = 0;
     for (const weekStart of weekStarts) {
-      rows.push(...(await scrapeWeekRows(gateway, weekStart)));
+      let rows: ClassRecord[];
+      try {
+        rows = await scrapeWeekRows(gateway, weekStart);
+      } catch (error) {
+        // A failed fetch is NOT "all cancelled" (ADR-0006): skip this week's
+        // reconcile so its cached rows survive. The other week is independent.
+        console.error(
+          `scrapeWeek: skipping week ${weekStart} after a fetch failure`,
+          error,
+        );
+        continue;
+      }
+
+      // The week's Sunday — the same expansion scheduleWeeks uses for its window.
+      const weekEnd = weekDatesFor(new Date(`${weekStart}T12:00:00Z`))[6];
+      const result = await ctx.runMutation(internal.classes.reconcileWeek, {
+        classes: rows,
+        weekStart,
+        weekEnd,
+        today,
+      });
+      upserted += result.upserted;
+      deleted += result.deleted;
     }
 
-    return await ctx.runMutation(internal.classes.upsertClasses, {
-      classes: rows,
-    });
+    return { upserted, deleted };
   },
 });
