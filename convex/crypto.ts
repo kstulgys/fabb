@@ -1,10 +1,10 @@
 // convex/crypto.ts
 const SCHEME = "v1";
 
-function keyBytes(): Uint8Array {
+function keyBytes(): Uint8Array<ArrayBuffer> {
   const b64 = process.env.POOL_DETAILS_KEY;
   if (!b64) throw new Error("POOL_DETAILS_KEY is not set");
-  const raw = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+  const raw = fromB64(b64);
   if (raw.length !== 32) {
     throw new Error("POOL_DETAILS_KEY must be base64 of 32 bytes");
   }
@@ -15,6 +15,13 @@ function toB64(bytes: Uint8Array): string {
   let s = "";
   for (const b of bytes) s += String.fromCharCode(b);
   return btoa(s);
+}
+
+function fromB64(s: string): Uint8Array<ArrayBuffer> {
+  const bin = atob(s);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
 }
 
 export function isEncrypted(value: string): boolean {
@@ -54,8 +61,8 @@ export async function decryptField(stored: string): Promise<string> {
     false,
     ["encrypt", "decrypt"],
   );
-  const iv = Uint8Array.from(atob(ivB64), (c) => c.charCodeAt(0));
-  const data = Uint8Array.from(atob(ctB64), (c) => c.charCodeAt(0));
+  const iv = fromB64(ivB64);
+  const data = fromB64(ctB64);
   const pt = await crypto.subtle.decrypt(
     { name: "AES-GCM", iv },
     cryptoKey,
