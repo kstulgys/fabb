@@ -14,6 +14,7 @@ import { poolDetailsValidator } from "./poolDetails";
  *
  * Canonical `users` shape (see `.git/sdd/constraints.md`):
  *   auth identity + `poolDetails{name,surname,phone,email}` + `detailsComplete`.
+ *   `name`/`surname`/`phone` are AES-GCM ciphertext at rest; `email` is plaintext.
  * Both app-specific fields are optional here so a freshly signed-up account is
  * valid before the User has filled in their pool details.
  */
