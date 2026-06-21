@@ -6,26 +6,27 @@ import {
   Button,
   Card,
   CloseButton,
+  createListCollection,
   Dialog,
   EmptyState,
   Field,
   Flex,
   Heading,
-  NativeSelect,
-  Portal,
+  Select,
   Span,
   Stack,
   Switch,
   Text,
 } from "@chakra-ui/react";
 import { useMutation, useQuery } from "convex/react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { LuPlus, LuRepeat2 } from "react-icons/lu";
 import { api } from "../../../convex/_generated/api";
 import type { Doc } from "../../../convex/_generated/dataModel";
 import { weekdayLabel } from "../../../convex/week";
 import { ConfirmDeleteButton } from "../confirm-delete-button";
 import { CardRowsSkeleton } from "./skeletons";
+import { SheetDialog } from "./sheet-dialog";
 
 /** How each run outcome reads in the per-rule history. */
 const RUN_OUTCOME = {
@@ -191,24 +192,9 @@ function AddRuleDialog({
   onClose: () => void;
 }) {
   return (
-    <Dialog.Root
-      open={open}
-      onOpenChange={(e) => {
-        if (!e.open) onClose();
-      }}
-      placement="center"
-      size={{ base: "full", md: "lg" }}
-      motionPreset="slide-in-bottom"
-    >
-      <Portal>
-        <Dialog.Backdrop />
-        <Dialog.Positioner>
-          <Dialog.Content colorPalette="teal">
-            {open && <AddRuleBody onClose={onClose} />}
-          </Dialog.Content>
-        </Dialog.Positioner>
-      </Portal>
-    </Dialog.Root>
+    <SheetDialog open={open} onClose={onClose}>
+      {open && <AddRuleBody onClose={onClose} />}
+    </SheetDialog>
   );
 }
 
@@ -220,16 +206,21 @@ function AddRuleBody({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const options =
-    week?.days.flatMap((day) =>
-      day.classes.map((cls) => ({
-        key: `${cls.pid}|${cls.date}`,
-        cls,
-        label: `${day.weekday} ${cls.date} · ${cls.startTime} · ${cls.name}`,
-      })),
-    ) ?? [];
+  const collection = useMemo(
+    () =>
+      createListCollection({
+        items: (week?.days ?? []).flatMap((day) =>
+          day.classes.map((cls) => ({
+            value: `${cls.pid}|${cls.date}`,
+            label: `${day.weekday} ${cls.date} · ${cls.startTime} · ${cls.name}`,
+            cls,
+          })),
+        ),
+      }),
+    [week],
+  );
 
-  const picked = options.find((o) => o.key === selected)?.cls ?? null;
+  const picked = collection.items.find((o) => o.value === selected)?.cls ?? null;
 
   const submit = () => {
     if (picked === null) return;
@@ -252,7 +243,7 @@ function AddRuleBody({ onClose }: { onClose: () => void }) {
         <CloseButton size="sm" />
       </Dialog.CloseTrigger>
       <Dialog.Body>
-        {week === undefined ? null : options.length === 0 ? (
+        {week === undefined ? null : collection.items.length === 0 ? (
           <Alert.Root status="info" mt="2">
             <Alert.Indicator />
             <Alert.Content>
@@ -266,31 +257,35 @@ function AddRuleBody({ onClose }: { onClose: () => void }) {
           <Stack gap="4" pt="2">
             <Field.Root>
               <Field.Label>Class</Field.Label>
-              <NativeSelect.Root>
-                <NativeSelect.Field
-                  value={selected}
-                  onChange={(e) => setSelected(e.target.value)}
-                >
-                  <option value="">Choose a class…</option>
-                  {options.map((o) => (
-                    <option key={o.key} value={o.key}>
-                      {o.label}
-                    </option>
-                  ))}
-                </NativeSelect.Field>
-                <NativeSelect.Indicator />
-              </NativeSelect.Root>
+              <Select.Root
+                collection={collection}
+                value={selected ? [selected] : []}
+                onValueChange={(e) => setSelected(e.value[0] ?? "")}
+              >
+                <Select.HiddenSelect />
+                <Select.Control>
+                  <Select.Trigger>
+                    <Select.ValueText placeholder="Choose a class…" />
+                  </Select.Trigger>
+                  <Select.IndicatorGroup>
+                    <Select.Indicator />
+                  </Select.IndicatorGroup>
+                </Select.Control>
+                <Select.Positioner>
+                  <Select.Content>
+                    {collection.items.map((item) => (
+                      <Select.Item item={item} key={item.value}>
+                        {item.label}
+                        <Select.ItemIndicator />
+                      </Select.Item>
+                    ))}
+                  </Select.Content>
+                </Select.Positioner>
+              </Select.Root>
               <Field.HelperText>
                 The rule repeats every week on the same day and time.
               </Field.HelperText>
             </Field.Root>
-            <Button
-              alignSelf={{ base: "stretch", sm: "flex-start" }}
-              disabled={picked === null || busy}
-              onClick={submit}
-            >
-              <LuPlus /> Add rule
-            </Button>
             {error && (
               <Alert.Root status="error">
                 <Alert.Indicator />
@@ -303,8 +298,11 @@ function AddRuleBody({ onClose }: { onClose: () => void }) {
         )}
       </Dialog.Body>
       <Dialog.Footer>
-        <Button variant="outline" onClick={onClose}>
-          Close
+        <Button variant="outline" colorPalette="gray" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button disabled={picked === null || busy} onClick={submit}>
+          <LuPlus /> Add rule
         </Button>
       </Dialog.Footer>
     </>

@@ -3,7 +3,6 @@
 import { Chart, useChart } from "@chakra-ui/charts";
 import {
   Box,
-  Card,
   chakra,
   EmptyState,
   Flex,
@@ -115,7 +114,7 @@ function Scoreboard({
 }
 
 /** A titled chart panel. */
-function ChartCard({
+function ChartPanel({
   title,
   children,
 }: {
@@ -123,12 +122,12 @@ function ChartCard({
   children: React.ReactNode;
 }) {
   return (
-    <Card.Root variant="elevated">
-      <Card.Header pb="3">
-        <Card.Title fontSize="sm">{title}</Card.Title>
-      </Card.Header>
-      <Card.Body pt="0">{children}</Card.Body>
-    </Card.Root>
+    <Stack gap="3">
+      <Text fontSize="sm" fontWeight="medium">
+        {title}
+      </Text>
+      {children}
+    </Stack>
   );
 }
 
@@ -275,7 +274,7 @@ export function Stats() {
             gap="5"
             mt={{ base: "3", md: "5" }}
           >
-            <ChartCard title="Calories over time">
+            <ChartPanel title="Calories over time">
               <SrChartTable
                 caption="Calories over time, by week"
                 head={["Week", "Calories"]}
@@ -313,9 +312,9 @@ export function Stats() {
                   ))}
                 </LineChart>
               </Chart.Root>
-            </ChartCard>
+            </ChartPanel>
 
-            <ChartCard title="Classes per week">
+            <ChartPanel title="Classes per week">
               <SrChartTable
                 caption="Classes attended, by week"
                 head={["Week", "Classes"]}
@@ -353,10 +352,10 @@ export function Stats() {
                   ))}
                 </BarChart>
               </Chart.Root>
-            </ChartCard>
+            </ChartPanel>
           </SimpleGrid>
 
-          <ChartCard title="Top class types · all time">
+          <ChartPanel title="Top class types · all time">
             <SrChartTable
               caption="Most-attended class types"
               head={["Class", "Times attended"]}
@@ -396,7 +395,7 @@ export function Stats() {
                 ))}
               </BarChart>
             </Chart.Root>
-          </ChartCard>
+          </ChartPanel>
         </Stack>
       )}
     </Stack>
