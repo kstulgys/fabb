@@ -27,6 +27,7 @@ import { weekdayLabel } from "../../../convex/week";
 import { ConfirmDeleteButton } from "../confirm-delete-button";
 import { CardRowsSkeleton } from "./skeletons";
 import { SheetDialog } from "./sheet-dialog";
+import { hasEnabledRuleForClass } from "./rule-match";
 
 /** How each run outcome reads in the per-rule history. */
 const RUN_OUTCOME = {
@@ -201,24 +202,31 @@ function AddRuleDialog({
 /** Body mounted only while dialog is open so queries + state reset each time. */
 function AddRuleBody({ onClose }: { onClose: () => void }) {
   const week = useQuery(api.classes.weekClasses, {});
+  const rules = useQuery(api.autoBookRules.listMine);
   const createRule = useMutation(api.autoBookRules.createFromClass);
   const [selected, setSelected] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const collection = useMemo(
-    () =>
-      createListCollection({
-        items: (week?.days ?? []).flatMap((day) =>
-          day.classes.map((cls) => ({
+  const collection = useMemo(() => {
+    const ruleList = rules ?? [];
+    return createListCollection({
+      items: (week?.days ?? []).flatMap((day) =>
+        day.classes.map((cls) => {
+          const disabled = hasEnabledRuleForClass(ruleList, cls);
+          return {
             value: `${cls.pid}|${cls.date}`,
-            label: `${day.weekday} ${cls.date} · ${cls.startTime} · ${cls.name}`,
+            label:
+              `${day.weekday} ${cls.date} · ${cls.startTime} · ${cls.name}` +
+              (disabled ? " · already auto-booked" : ""),
             cls,
-          })),
-        ),
-      }),
-    [week],
-  );
+            disabled,
+          };
+        }),
+      ),
+      isItemDisabled: (item) => item.disabled,
+    });
+  }, [week, rules]);
 
   const picked = collection.items.find((o) => o.value === selected)?.cls ?? null;
 

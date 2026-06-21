@@ -30,6 +30,7 @@ import {
 import { CompleteDetailsPrompt } from "../complete-details-prompt";
 import { Intensity } from "./intensity";
 import { SheetDialog } from "./sheet-dialog";
+import { hasEnabledRuleForClass } from "./rule-match";
 
 const STATUS_META: Record<
   ClassStatus,
@@ -257,6 +258,7 @@ type AutoBookState =
  */
 function AutoBookWeekly({ cls }: { cls: Doc<"classes"> }) {
   const details = useQuery(api.poolDetailsOps.myPoolDetails);
+  const rules = useQuery(api.autoBookRules.listMine) ?? [];
   const createRule = useMutation(api.autoBookRules.createFromClass);
   const [state, setState] = useState<AutoBookState>({ kind: "idle" });
 
@@ -270,6 +272,21 @@ function AutoBookWeekly({ cls }: { cls: Doc<"classes"> }) {
   }
 
   const weekday = weekdayLabel(isoWeekday(cls.date));
+
+  const already = hasEnabledRuleForClass(rules, cls);
+  if (already) {
+    return (
+      <Stack gap="3">
+        <Button variant="outline" disabled w={{ base: "full", sm: "auto" }}>
+          Already auto-booking
+        </Button>
+        <Text fontSize="xs" color="fg.muted">
+          You already auto-book “{cls.name}” every {weekday} at {cls.startTime}.
+          Manage it under Auto-book rules.
+        </Text>
+      </Stack>
+    );
+  }
   const onCreate = () => {
     setState({ kind: "saving" });
     createRule({ pid: cls.pid, date: cls.date })
