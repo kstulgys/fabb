@@ -60,6 +60,32 @@ export function weekDatesFor(now: Date): string[] {
 }
 
 /**
+ * `count` consecutive Monday ISO dates (Europe/Vilnius), starting with the
+ * Monday of `now`'s own week — the start dates of a rolling multi-week window
+ * (ADR-0006: the Schedule window caches the current + next week). Uses the same
+ * UTC-anchored civil-date arithmetic as {@link weekDatesFor}, so it is immune to
+ * DST shifts. `count` must be >= 1; the first element is always this week's
+ * Monday.
+ */
+export function weekStartsFor(now: Date, count: number): string[] {
+  const [year, month, day] = vilniusDate.format(now).split("-").map(Number);
+  const anchorMs = Date.UTC(year, month - 1, day);
+  // getUTCDay: 0=Sun..6=Sat → days since Monday.
+  const sinceMonday = (new Date(anchorMs).getUTCDay() + 6) % 7;
+  const mondayMs = anchorMs - sinceMonday * 86_400_000;
+
+  const starts: string[] = [];
+  for (let i = 0; i < count; i++) {
+    const d = new Date(mondayMs + i * 7 * 86_400_000);
+    const y = d.getUTCFullYear();
+    const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+    const dd = String(d.getUTCDate()).padStart(2, "0");
+    starts.push(`${y}-${m}-${dd}`);
+  }
+  return starts;
+}
+
+/**
  * The ISO-8601 weekday of an ISO date string ("YYYY-MM-DD"): Monday=1 … Sunday=7.
  * A civil date's weekday is timezone-independent, so this needs no Vilnius math —
  * it reads the day at UTC midnight and maps Sunday (0) to 7. This is the value

@@ -374,6 +374,40 @@ describe("runDayBefore — daily sweep", () => {
   });
 });
 
+describe("runDayBefore + ruleContext — Sunday resolves next week's Monday (ADR-0006 regression)", () => {
+  // The latent bug: with only the current week cached, a Sunday run resolving
+  // tomorrow = Monday hit `no_match` (next Monday was never scraped). The
+  // two-week Schedule window fixes it; this guards the consumer side.
+  const THIS_MONDAY = "2026-06-15";
+  const NEXT_MONDAY = "2026-06-22";
+  // ~12:00 Vilnius on Sunday 2026-06-21 → tomorrow is next week's Monday.
+  const SUNDAY_NOW = Date.parse("2026-06-21T09:00:00Z");
+
+  test("a Monday rule resolves to ready against the cached next week, not no_match", async () => {
+    const t = convexTest(schema, modules);
+    const userId = await seedOwner(t);
+    const ruleId = await seedRule(t, userId, { weekday: 1 }); // Monday
+    // Both weeks cached (what the two-week scrape produces). Only next Monday is
+    // reachable from a Sunday clock; this Monday proves we match the right week.
+    await seedClass(t, { date: THIS_MONDAY });
+    await seedClass(t, { date: NEXT_MONDAY });
+
+    // The Sunday sweep targets next week's Monday and finds the rule.
+    const sweep = await t.mutation(internal.autoBook.runDayBefore, {
+      now: SUNDAY_NOW,
+    });
+    expect(sweep).toEqual({ date: NEXT_MONDAY, weekday: 1, scheduled: 1 });
+
+    // …and that date resolves to a bookable class — the bug returned no_match.
+    const verdict = await t.query(internal.autoBook.ruleContext, {
+      ruleId,
+      date: sweep.date,
+      now: SUNDAY_NOW,
+    });
+    expect(verdict.kind).toBe("ready");
+  });
+});
+
 describe("recentRuns — per-rule run log (owner-scoped, for the UI)", () => {
   test("returns the caller's own runs newest-first; hides another User's", async () => {
     const t = convexTest(schema, modules);

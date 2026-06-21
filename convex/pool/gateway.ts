@@ -31,8 +31,9 @@ import {
 } from "./parse";
 
 export interface PoolGateway {
-  /** The current Mon–Sun week's classes, parsed from the schedule page. */
-  fetchSchedule(): Promise<ScheduleClass[]>;
+  /** The classes for the Mon–Sun week starting `weekStart` (an ISO Monday),
+   * parsed from that week's `?nuo=<weekStart>` schedule page. */
+  fetchSchedule(weekStart: string): Promise<ScheduleClass[]>;
   /** The stable event-modal fields (Calories, duration) for `(pid, date)`. */
   fetchEventDetail(pid: string, date: string): Promise<EventDetail>;
   /**
@@ -172,8 +173,9 @@ async function fetchEventModalHtml(pid: string, date: string): Promise<string> {
 }
 
 export const realPoolGateway: PoolGateway = {
-  async fetchSchedule() {
-    const res = await poolFetch(SCHEDULE_URL, {
+  async fetchSchedule(weekStart) {
+    const url = `${SCHEDULE_URL}?nuo=${encodeURIComponent(weekStart)}`;
+    const res = await poolFetch(url, {
       headers: { "User-Agent": USER_AGENT },
     });
     if (!res.ok) {
