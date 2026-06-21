@@ -86,7 +86,7 @@ function DashboardTabs() {
     <Tabs.Root
       defaultValue="schedule"
       variant="plain"
-      pb={{ base: "24", md: "0" }}
+      pb={{ base: "calc(6rem + env(safe-area-inset-bottom))", md: "0" }}
     >
       <Tabs.List
         position={{ base: "fixed", md: "static" }}
@@ -97,7 +97,8 @@ function DashboardTabs() {
         borderTopWidth={{ base: "1px", md: "0" }}
         borderColor="border"
         px={{ base: "1", md: "0" }}
-        py={{ base: "1", md: "0" }}
+        pt={{ base: "1.5", md: "0" }}
+        pb={{ base: "calc(env(safe-area-inset-bottom) + 0.375rem)", md: "0" }}
         gap={{ base: "0", md: "1" }}
         justifyContent={{ base: "space-around", md: "flex-start" }}
         mb={{ base: "0", md: "6" }}
@@ -110,6 +111,9 @@ function DashboardTabs() {
             flexDirection={{ base: "column", md: "row" }}
             gap={{ base: "1", md: "2" }}
             py="2"
+            px={{ base: "0.5", md: "3" }}
+            minH={{ base: "12", md: "auto" }}
+            whiteSpace="nowrap"
             rounded="md"
             color="fg.muted"
             fontWeight="medium"

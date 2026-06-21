@@ -2,11 +2,13 @@
 
 import {
   Badge,
+  Box,
   Card,
   Flex,
   Heading,
   HStack,
   Icon,
+  SimpleGrid,
   Span,
   Stack,
   Text,
@@ -15,6 +17,7 @@ import { useQuery } from "convex/react";
 import { useState, type ReactNode } from "react";
 import { LuCalendarDays, LuClock, LuFlame } from "react-icons/lu";
 import { api } from "../../../convex/_generated/api";
+import type { WeekClasses } from "../../../convex/classes";
 import type { Doc } from "../../../convex/_generated/dataModel";
 import { format, fromColumns } from "../../../convex/calories";
 import { classStatus, todayDate } from "../../../convex/week";
@@ -104,25 +107,104 @@ function ClassRow({
   );
 }
 
-/**
- * The current Mon–Sun week of pool classes, grouped by day. Reads the shared
- * `classes` cache reactively (ADR-0002) — populated by the scrape action — so
- * no per-view scraping happens here. Opening a class fetches its volatile
- * free-spot count live (never cached).
- */
-export function WeekCalendar() {
-  const week = useQuery(api.classes.weekClasses, {});
-  const [selected, setSelected] = useState<Doc<"classes"> | null>(null);
-  // One "now" for this render drives every status marking and the open dialog.
-  const now = new Date();
-  const today = todayDate(now);
+/** One day's button in the week strip: weekday, date number, and a teal dot
+ * when that day has classes. The selected day is filled teal; today (when not
+ * selected) carries a teal outline so "where am I" and "what's today" stay
+ * distinct. */
+function DayTab({
+  day,
+  isActive,
+  isToday,
+  onSelect,
+}: {
+  day: WeekClasses["days"][number];
+  isActive: boolean;
+  isToday: boolean;
+  onSelect: () => void;
+}) {
+  const count = day.classes.length;
+  return (
+    <Stack
+      as="button"
+      onClick={onSelect}
+      align="center"
+      gap="1"
+      py="2"
+      rounded="md"
+      cursor="pointer"
+      bg={isActive ? "colorPalette.solid" : "bg.muted"}
+      color={isActive ? "colorPalette.contrast" : "fg"}
+      borderWidth="1px"
+      borderColor={
+        isActive
+          ? "colorPalette.solid"
+          : isToday
+            ? "colorPalette.solid"
+            : "transparent"
+      }
+      transition="background-color 0.15s ease-out, border-color 0.15s ease-out"
+      _hover={isActive ? undefined : { bg: "bg.emphasized" }}
+      _focusVisible={{
+        outline: "2px solid",
+        outlineColor: "colorPalette.focusRing",
+        outlineOffset: "2px",
+      }}
+      aria-pressed={isActive}
+      aria-label={`${day.weekday} ${day.date}, ${
+        count === 0
+          ? "no classes"
+          : `${count} ${count === 1 ? "class" : "classes"}`
+      }`}
+    >
+      <Text
+        fontSize="2xs"
+        fontWeight="medium"
+        textTransform="uppercase"
+        letterSpacing="wide"
+        color={isActive ? "inherit" : "fg.muted"}
+      >
+        {day.weekday.slice(0, 3)}
+      </Text>
+      <Text
+        fontSize="md"
+        fontWeight="semibold"
+        lineHeight="1"
+        fontVariantNumeric="tabular-nums"
+      >
+        {Number(day.date.slice(8))}
+      </Text>
+      <Box
+        boxSize="1.5"
+        rounded="full"
+        bg={
+          count === 0
+            ? "transparent"
+            : isActive
+              ? "colorPalette.contrast"
+              : "colorPalette.solid"
+        }
+      />
+    </Stack>
+  );
+}
 
-  if (week === undefined) {
-    return <ScheduleSkeleton />;
-  }
+/**
+ * The week schedule, one day at a time. A seven-day strip selects the day
+ * (today by default); only that day's classes show below, so the whole week is
+ * a glance instead of a long scroll. Presentational: it takes the already-loaded
+ * week, so it can render from mock data and be unit-tested without Convex.
+ */
+export function WeekSchedule({ week, now }: { week: WeekClasses; now: Date }) {
+  const today = todayDate(now);
+  const [selected, setSelected] = useState<Doc<"classes"> | null>(null);
+  const [activeDate, setActiveDate] = useState(
+    week.days.some((d) => d.date === today) ? today : week.days[0].date,
+  );
+  const activeDay =
+    week.days.find((d) => d.date === activeDate) ?? week.days[0];
 
   return (
-    <Stack gap="8">
+    <Stack gap="6">
       <Stack gap="1">
         <HStack gap="2">
           <Icon color="colorPalette.fg" boxSize="5">
@@ -135,43 +217,57 @@ export function WeekCalendar() {
         </Text>
       </Stack>
 
-      <Stack gap="6">
+      <SimpleGrid columns={7} gap="1.5">
         {week.days.map((day) => (
-          <Stack gap="2" key={day.date}>
-            <HStack gap="2">
-              <Heading
-                size="sm"
-                color={day.date === today ? "teal.fg" : undefined}
-              >
-                {day.weekday}{" "}
-                <Span color="fg.muted" fontWeight="normal">
-                  · {day.date}
-                </Span>
-              </Heading>
-              {day.date === today && (
-                <Badge colorPalette="teal" variant="subtle" size="sm">
-                  Today
-                </Badge>
-              )}
-            </HStack>
-            {day.classes.length === 0 ? (
-              <Text color="fg.muted" fontSize="sm">
-                No classes.
-              </Text>
-            ) : (
-              <Stack gap="2">
-                {day.classes.map((cls) => (
-                  <ClassRow
-                    key={cls._id}
-                    cls={cls}
-                    now={now}
-                    onOpen={() => setSelected(cls)}
-                  />
-                ))}
-              </Stack>
-            )}
-          </Stack>
+          <DayTab
+            key={day.date}
+            day={day}
+            isActive={day.date === activeDate}
+            isToday={day.date === today}
+            onSelect={() => setActiveDate(day.date)}
+          />
         ))}
+      </SimpleGrid>
+
+      <Stack gap="3">
+        <HStack gap="2">
+          <Heading size="sm">
+            {activeDay.weekday}{" "}
+            <Span color="fg.muted" fontWeight="normal">
+              · {activeDay.date}
+            </Span>
+          </Heading>
+          {activeDay.date === today && (
+            <Badge colorPalette="teal" variant="subtle" size="sm">
+              Today
+            </Badge>
+          )}
+        </HStack>
+        {activeDay.classes.length === 0 ? (
+          <Card.Root variant="outline">
+            <Card.Body py="8">
+              <Stack align="center" gap="1" textAlign="center">
+                <Text fontWeight="medium">
+                  No classes on {activeDay.weekday}
+                </Text>
+                <Text color="fg.muted" fontSize="sm">
+                  Pick another day to see what&apos;s on.
+                </Text>
+              </Stack>
+            </Card.Body>
+          </Card.Root>
+        ) : (
+          <Stack gap="2">
+            {activeDay.classes.map((cls) => (
+              <ClassRow
+                key={cls._id}
+                cls={cls}
+                now={now}
+                onOpen={() => setSelected(cls)}
+              />
+            ))}
+          </Stack>
+        )}
       </Stack>
 
       <ClassDetailDialog
@@ -181,4 +277,21 @@ export function WeekCalendar() {
       />
     </Stack>
   );
+}
+
+/**
+ * Loads the current Mon–Sun week of pool classes from the shared `classes`
+ * cache (ADR-0002) — populated by the scrape action, read reactively, never
+ * scraped per view — and hands it to {@link WeekSchedule}. Opening a class
+ * fetches its volatile free-spot count live (never cached).
+ */
+export function WeekCalendar() {
+  const week = useQuery(api.classes.weekClasses, {});
+
+  if (week === undefined) {
+    return <ScheduleSkeleton />;
+  }
+
+  // One "now" for this render drives every status marking and the open dialog.
+  return <WeekSchedule week={week} now={new Date()} />;
 }

@@ -1,5 +1,6 @@
 import { type Infer, v } from "convex/values";
 import { internalMutation, query } from "./_generated/server";
+import type { Doc } from "./_generated/dataModel";
 import { caloriesColumns } from "./calories";
 import { requireUserId } from "./users";
 import { WEEKDAY_LABELS, resolveClock, weekDatesFor } from "./week";
@@ -48,6 +49,21 @@ export const upsertClasses = internalMutation({
   },
 });
 
+/** One day of the week schedule: its Monday-first weekday label, ISO date, and
+ * the day's classes sorted by start time. */
+export interface ClassDay {
+  weekday: string;
+  date: string;
+  classes: Doc<"classes">[];
+}
+
+/** The current Mon–Sun week of classes returned by {@link weekClasses}. */
+export interface WeekClasses {
+  weekStart: string;
+  weekEnd: string;
+  days: ClassDay[];
+}
+
 /**
  * The current Mon–Sun week's classes (Europe/Vilnius), grouped by day in
  * Monday-first order. `classes` is shared reference data that every User reads
@@ -56,7 +72,7 @@ export const upsertClasses = internalMutation({
  */
 export const weekClasses = query({
   args: { now: v.optional(v.number()) },
-  handler: async (ctx, { now }) => {
+  handler: async (ctx, { now }): Promise<WeekClasses> => {
     await requireUserId(ctx);
 
     const dates = weekDatesFor(resolveClock(now));
