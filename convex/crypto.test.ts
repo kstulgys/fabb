@@ -17,8 +17,14 @@ describe("crypto", () => {
     expect(await encryptField("x")).not.toBe(await encryptField("x"));
   });
 
-  test("rejects non-ciphertext", async () => {
+  test("returns legacy plaintext-at-rest unchanged", async () => {
     expect(isEncrypted("Jonas")).toBe(false);
-    await expect(decryptField("Jonas")).rejects.toThrow();
+    expect(await decryptField("Jonas")).toBe("Jonas");
+  });
+
+  test("rejects tampered ciphertext", async () => {
+    const ct = await encryptField("Jonas");
+    const tampered = ct.slice(0, -1) + (ct.endsWith("A") ? "B" : "A");
+    await expect(decryptField(tampered)).rejects.toThrow();
   });
 });

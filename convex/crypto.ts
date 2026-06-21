@@ -48,11 +48,12 @@ export async function encryptField(plain: string): Promise<string> {
 }
 
 export async function decryptField(stored: string): Promise<string> {
-  const sep = stored.indexOf(":");
-  if (sep === -1 || stored.slice(0, sep) !== SCHEME) {
-    throw new Error("Unrecognized ciphertext scheme");
-  }
-  const [ivB64, ctB64] = stored.slice(sep + 1).split(".");
+  // Legacy plaintext-at-rest (rows written before encryption rolled out) is
+  // returned unchanged; only `v1:` values are decrypted, so existing accounts
+  // keep working without a mandatory backfill. Tampered `v1:` ciphertext still
+  // fails AES-GCM authentication below.
+  if (!isEncrypted(stored)) return stored;
+  const [ivB64, ctB64] = stored.slice(SCHEME.length + 1).split(".");
   if (!ivB64 || !ctB64) throw new Error("Malformed ciphertext");
   const cryptoKey = await crypto.subtle.importKey(
     "raw",
