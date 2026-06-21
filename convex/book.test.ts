@@ -7,6 +7,7 @@ import type { PoolGateway } from "./pool/gateway";
 import { setPoolGateway } from "./pool/gateway";
 import { POOL_DETAILS_INCOMPLETE_MESSAGE, type PoolDetails } from "./poolDetails";
 import schema from "./schema";
+import { encryptedPoolDetails } from "./testHelpers";
 
 const modules = import.meta.glob("./**/*.ts");
 
@@ -62,8 +63,11 @@ describe("bookNow (fake gateway — no network, no real booking)", () => {
       const t = convexTest(schema, modules);
       setPoolGateway(fakeGateway);
       bookResult = status;
-      const userId = await t.run((ctx) =>
-        ctx.db.insert("users", { poolDetails: VALID, detailsComplete: true }),
+      const userId = await t.run(async (ctx) =>
+        ctx.db.insert("users", {
+          poolDetails: await encryptedPoolDetails(VALID, VALID.email),
+          detailsComplete: true,
+        }),
       );
       await t.run((ctx) => ctx.db.insert("classes", FUTURE_CLASS));
 
@@ -121,8 +125,11 @@ describe("bookNow (fake gateway — no network, no real booking)", () => {
     const t = convexTest(schema, modules);
     setPoolGateway(fakeGateway);
     bookResult = "registered";
-    const userId = await t.run((ctx) =>
-      ctx.db.insert("users", { poolDetails: VALID, detailsComplete: true }),
+    const userId = await t.run(async (ctx) =>
+      ctx.db.insert("users", {
+        poolDetails: await encryptedPoolDetails(VALID, VALID.email),
+        detailsComplete: true,
+      }),
     );
     await t.run((ctx) => ctx.db.insert("classes", FUTURE_CLASS));
 
@@ -142,8 +149,11 @@ describe("bookNow (fake gateway — no network, no real booking)", () => {
   test("refuses a finished class without booking", async () => {
     const t = convexTest(schema, modules);
     setPoolGateway(fakeGateway);
-    const userId = await t.run((ctx) =>
-      ctx.db.insert("users", { poolDetails: VALID, detailsComplete: true }),
+    const userId = await t.run(async (ctx) =>
+      ctx.db.insert("users", {
+        poolDetails: await encryptedPoolDetails(VALID, VALID.email),
+        detailsComplete: true,
+      }),
     );
     // A class on a past date is always 'finished' → not bookable.
     await t.run((ctx) =>
@@ -164,8 +174,11 @@ describe("bookNow (fake gateway — no network, no real booking)", () => {
   test("refuses to book a class missing from this week's schedule", async () => {
     const t = convexTest(schema, modules);
     setPoolGateway(fakeGateway);
-    const userId = await t.run((ctx) =>
-      ctx.db.insert("users", { poolDetails: VALID, detailsComplete: true }),
+    const userId = await t.run(async (ctx) =>
+      ctx.db.insert("users", {
+        poolDetails: await encryptedPoolDetails(VALID, VALID.email),
+        detailsComplete: true,
+      }),
     );
     // No class inserted → classForBooking returns null.
 
@@ -209,8 +222,11 @@ describe("bookNow — ADR-0003 manual threshold (injectable clock)", () => {
     const t = convexTest(schema, modules);
     setPoolGateway(fakeGateway);
     bookResult = "registered";
-    const userId = await t.run((ctx) =>
-      ctx.db.insert("users", { poolDetails: VALID, detailsComplete: true }),
+    const userId = await t.run(async (ctx) =>
+      ctx.db.insert("users", {
+        poolDetails: await encryptedPoolDetails(VALID, VALID.email),
+        detailsComplete: true,
+      }),
     );
     await t.run((ctx) => ctx.db.insert("classes", CLASS));
 
@@ -225,8 +241,11 @@ describe("bookNow — ADR-0003 manual threshold (injectable clock)", () => {
   test("refuses the same class once it has FINISHED", async () => {
     const t = convexTest(schema, modules);
     setPoolGateway(fakeGateway);
-    const userId = await t.run((ctx) =>
-      ctx.db.insert("users", { poolDetails: VALID, detailsComplete: true }),
+    const userId = await t.run(async (ctx) =>
+      ctx.db.insert("users", {
+        poolDetails: await encryptedPoolDetails(VALID, VALID.email),
+        detailsComplete: true,
+      }),
     );
     await t.run((ctx) => ctx.db.insert("classes", CLASS));
 
