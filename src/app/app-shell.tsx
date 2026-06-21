@@ -1,9 +1,19 @@
 "use client";
 
-import { Box, Container, Flex, Heading, HStack, Icon } from "@chakra-ui/react";
+import {
+  Box,
+  Container,
+  Flex,
+  Heading,
+  HStack,
+  Icon,
+  IconButton,
+} from "@chakra-ui/react";
 import type { ReactNode } from "react";
-import { LuBicepsFlexed } from "react-icons/lu";
+import { useEffect, useState } from "react";
+import { LuBicepsFlexed, LuInfo } from "react-icons/lu";
 import { ColorModeButton } from "@/components/ui/color-mode";
+import { DisclaimerDialog } from "./disclaimer-dialog";
 
 /**
  * The shared app frame: a sticky header carrying the brand, a page-supplied
@@ -21,6 +31,16 @@ export function AppShell({
   actions?: ReactNode;
   maxW?: string;
 }) {
+  const [aboutOpen, setAboutOpen] = useState(false);
+  useEffect(() => {
+    if (localStorage.getItem("fabb.disclaimerSeen") !== "1") {
+      // First visit only: open the disclaimer once. Reading localStorage must
+      // happen in an effect (not a lazy initializer) to stay SSR-safe.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setAboutOpen(true);
+      localStorage.setItem("fabb.disclaimerSeen", "1");
+    }
+  }, []);
   return (
     <Box colorPalette="teal" minH="100dvh" bg="bg">
       <Box
@@ -44,6 +64,14 @@ export function AppShell({
             </HStack>
             <HStack gap="1">
               {actions}
+              <IconButton
+                aria-label="About this app"
+                variant="ghost"
+                size="sm"
+                onClick={() => setAboutOpen(true)}
+              >
+                <LuInfo />
+              </IconButton>
               <ColorModeButton />
             </HStack>
           </Flex>
@@ -52,6 +80,7 @@ export function AppShell({
       <Container maxW={maxW} py={{ base: "5", md: "8" }}>
         {children}
       </Container>
+      <DisclaimerDialog open={aboutOpen} onClose={() => setAboutOpen(false)} />
     </Box>
   );
 }
