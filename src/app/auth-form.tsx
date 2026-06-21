@@ -42,6 +42,21 @@ export function AuthForm() {
     }
   };
 
+  // DEV ONLY: one-click guest sign-in (see convex/auth.ts). The block that
+  // renders the trigger is gated on NODE_ENV, so it never ships to production;
+  // the "anonymous" provider is also absent there, so this would fail anyway.
+  const handleGuest = async () => {
+    setError(null);
+    setSubmitting(true);
+    try {
+      await signIn("anonymous");
+    } catch {
+      setError("Couldn't start a guest session.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   if (sent) {
     return (
       <Card.Root variant="elevated" maxW="sm" w="full">
@@ -115,6 +130,17 @@ export function AuthForm() {
         <Text fontSize="sm" color="fg.muted" textAlign="center">
           No password — we email you a one-time link.
         </Text>
+
+        {process.env.NODE_ENV !== "production" && (
+          <Button
+            variant="outline"
+            w="full"
+            disabled={submitting}
+            onClick={handleGuest}
+          >
+            Continue as guest (dev)
+          </Button>
+        )}
       </Card.Body>
     </Card.Root>
   );
