@@ -6,6 +6,7 @@ import { internalAction } from "./_generated/server";
 import { planAttempt, type RuleContextResult } from "./autoBook";
 import { bookAndRecord, OUTCOME_MESSAGE } from "./book";
 import { type AttemptOutcome, isRetriable } from "./bookingStatus";
+import { decryptPoolFields } from "./crypto";
 
 /**
  * One day-before AutoBook attempt for a single rule, plus its retry (issue 08).
@@ -75,11 +76,12 @@ export const attemptRule = internalAction({
 
     // `book`: contact the pool through the shared helper, then record the
     // classified status (its message keyed by OUTCOME_MESSAGE).
+    const dec = await decryptPoolFields(plan.poolDetails);
     const { status, bookingId } = await bookAndRecord(ctx, {
       userId: plan.userId,
       pid: plan.pid,
       date,
-      poolDetails: plan.poolDetails,
+      poolDetails: { ...dec, email: plan.poolDetails.email },
       source: "rule",
       ruleId,
     });

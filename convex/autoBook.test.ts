@@ -10,6 +10,7 @@ import type { PoolGateway } from "./pool/gateway";
 import { setPoolGateway } from "./pool/gateway";
 import type { PoolDetails } from "./poolDetails";
 import schema from "./schema";
+import { encryptedPoolDetails } from "./testHelpers";
 
 const modules = import.meta.glob("./**/*.ts");
 type Harness = TestConvex<typeof schema>;
@@ -67,13 +68,17 @@ afterEach(() => {
   bookResult = "registered";
 });
 
-function seedOwner(t: Harness, complete = true): Promise<Id<"users">> {
-  return t.run((ctx) =>
-    ctx.db.insert(
-      "users",
-      complete ? { detailsComplete: true, poolDetails: VALID } : {},
-    ),
-  );
+async function seedOwner(t: Harness, complete = true): Promise<Id<"users">> {
+  const fields = complete
+    ? {
+        detailsComplete: true,
+        poolDetails: await encryptedPoolDetails(
+          { name: VALID.name, surname: VALID.surname, phone: VALID.phone },
+          VALID.email,
+        ),
+      }
+    : {};
+  return t.run((ctx) => ctx.db.insert("users", fields));
 }
 
 function seedRule(
