@@ -25,7 +25,7 @@ export default function SignInPage() {
   }
 
   return (
-    <AppShell maxW="md">
+    <AppShell>
       <Flex justify="center" pt={{ base: "8", md: "16" }}>
         <AuthForm />
       </Flex>

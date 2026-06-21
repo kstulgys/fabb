@@ -11,7 +11,6 @@ function Settings() {
   const router = useRouter();
   return (
     <AppShell
-      maxW="lg"
       actions={
         <Button
           variant="ghost"
@@ -23,7 +22,7 @@ function Settings() {
         </Button>
       }
     >
-      <Stack gap="6">
+      <Stack gap="6" maxW="lg">
         <Heading size="xl">Settings</Heading>
         <PoolDetailsForm
           heading="Pool details"
