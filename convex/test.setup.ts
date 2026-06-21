@@ -14,3 +14,5 @@ process.env.JWKS = JSON.stringify({
 });
 process.env.CONVEX_SITE_URL ??= "https://test-fabb.convex.site";
 process.env.SITE_URL ??= "http://localhost:3000";
+process.env.POOL_DETAILS_KEY ??=
+  "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="; // 32 bytes, test only
