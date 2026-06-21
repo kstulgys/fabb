@@ -5,13 +5,14 @@ import { internal } from "./_generated/api";
 
 // The idempotency AC ("re-running produces no duplicate rows") is covered by
 // `convex/scrape.test.ts`. This guards the wiring that schedule can't unit-test:
-// the cron exists, fires ~hourly (ADR-0002 keeps pool load flat), and targets
-// the real scrape action rather than some stale/renamed reference.
-test("an hourly cron is registered against the real scrapeWeek action", () => {
+// the cron exists, fires once daily (ADR-0006: a stable two-week Schedule
+// window refreshes daily, superseding ADR-0002), and targets the real scrape
+// action rather than some stale/renamed reference.
+test("a daily cron is registered against the real scrapeWeek action", () => {
   const job = crons.crons["refresh schedule"];
 
   expect(job).toBeDefined();
-  expect(job.schedule).toEqual({ type: "interval", hours: 1 });
+  expect(job.schedule).toEqual({ type: "cron", cron: "0 22 * * *" });
   expect(job.name).toBe(getFunctionName(internal.pool.scrape.scrapeWeek));
   expect(job.args).toEqual([{}]);
 });
