@@ -12,6 +12,12 @@ Distinct from the pool itself — the pool has no accounts; it books anonymously
 keyed only by email.
 _Avoid_: Member, account.
 
+**Schedule window**:
+The rolling two weeks — the current and next Mon–Sun weeks (Europe/Vilnius) —
+of classes the app shows and keeps fresh: the horizon a User browses and books
+within. Distinct from a single week.
+_Avoid_: current week (now inaccurate), two-week view.
+
 **AutoBook rule**:
 A standing, recurring-weekly instruction to book a class for a User — matched
 each week by weekday, start time, and name. The trigger the day-before cron acts

@@ -1,5 +1,10 @@
 # Hybrid schedule caching
 
+> **Status**: Superseded by [ADR-0006](./0006-two-week-rolling-schedule-cache.md).
+> The cache is now a rolling **two-week** Schedule window refreshed **daily**, not
+> the current week hourly. The hybrid split this ADR established — stable fields
+> cached, volatile free-spot counts fetched live — still holds.
+
 The pool publishes its timetable as scraped HTML and has no API; the browser
 cannot fetch it (CORS + PHP session), so all reads go through Convex. We cache
 the **stable** part of the week's schedule (class name, time, `pid`, date,
