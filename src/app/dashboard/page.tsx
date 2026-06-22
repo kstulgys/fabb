@@ -86,6 +86,7 @@ function DashboardTabs() {
     <Tabs.Root
       defaultValue="schedule"
       variant="plain"
+      lazyMount
       pb={{ base: "calc(6rem + env(safe-area-inset-bottom))", md: "0" }}
     >
       <Tabs.List
