@@ -91,22 +91,23 @@ const schema = defineSchema({
 
   /**
    * A standing AutoBook rule: a recurring-weekly instruction to book one class
-   * for its owner. Keyed by `(weekday, startTime, nameMatch)` (see CONTEXT.md);
+   * for its owner, identified by the pool's per-slot `pid` captured at creation;
    * `enabled` gates it without deleting it. The day-before cron (issue 08) reads
    * the enabled rules and books the matching class — disabling or deleting a
    * rule only stops FUTURE bookings and never cancels a Booking already placed
    * (ADR-0001).
    *
-   * `weekday` is the ISO-8601 day-of-week of the class date (Monday=1 … Sunday=7,
-   * Europe/Vilnius); `week.ts#isoWeekday` derives it from a class's ISO date and
-   * the cron computes the same value for tomorrow to resolve a rule to a class.
+   * `weekday` (ISO-8601 Monday=1 … Sunday=7, Europe/Vilnius; `week.ts#isoWeekday`)
+   * is the cron's firing trigger: it fires a rule when tomorrow's weekday matches,
+   * then resolves the exact class by `(pid, date)`. `startTime`/`nameMatch` label it.
    * Scoped per User via the `userId` index (issue 07).
    */
   autoBookRules: defineTable({
     userId: v.id("users"),
+    pid: v.optional(v.string()), // pool's per-slot id — the resolution key (optional: legacy rules predate it; undefined → no_match)
     weekday: v.number(), // ISO-8601: Monday=1 … Sunday=7 (Europe/Vilnius)
-    startTime: v.string(), // "HH:MM", matched against the class's startTime
-    nameMatch: v.string(), // the class name to match (captured from the class)
+    startTime: v.string(), // "HH:MM" — display label captured at creation
+    nameMatch: v.string(), // class name — display label captured at creation
     enabled: v.boolean(),
   })
     .index("userId", ["userId"])

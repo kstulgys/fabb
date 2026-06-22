@@ -168,8 +168,9 @@ export const runDayBefore = internalMutation({
  * Resolve a rule to a verdict for `date`, in one transaction. Reads the rule's
  * OWNER directly from `users` (the cron has no auth identity — it is system
  * context — so it must NOT use `getAuthUserId`); requires complete Pool details;
- * resolves the SINGLE open class by exact `startTime` + `nameMatch`; refuses to
- * guess when 0 or 2+ match; blocks if a terminal Booking already exists; and
+ * resolves the class by the rule's `pid` (the pool's per-slot id) — a missing pid
+ * or one not offered on `date` is `no_match` (no name/time fallback); blocks if a
+ * terminal Booking already exists; and
  * gives up once the class has started. `now` is injectable for tests.
  */
 export const ruleContext = internalQuery({
@@ -188,17 +189,18 @@ export const ruleContext = internalQuery({
       return { kind: "no_details", userId };
     }
 
-    // Exactly one open class must match (startTime + exact name). 0 or 2+ → do
-    // not guess: a wrong booking is worse than no booking.
-    const dayClasses = await ctx.db
+    // Resolve the exact class by the rule's pid (the pool's stable per-slot id;
+    // identity is (pid, date)). No name/time fallback: a rule with no pid, or a
+    // pid not offered on `date`, books nothing (no_match) rather than guess.
+    if (rule.pid === undefined) return { kind: "no_match", userId };
+    const rulePid = rule.pid;
+    const cls = await ctx.db
       .query("classes")
-      .withIndex("by_date", (q) => q.eq("date", date))
-      .collect();
-    const matches = dayClasses.filter(
-      (c) => c.startTime === rule.startTime && c.name === rule.nameMatch,
-    );
-    if (matches.length !== 1) return { kind: "no_match", userId };
-    const cls = matches[0];
+      .withIndex("by_pid_and_date", (q) =>
+        q.eq("pid", rulePid).eq("date", date),
+      )
+      .unique();
+    if (cls === null) return { kind: "no_match", userId };
 
     // Dedupe: if a prior attempt already secured (or definitively closed) this
     // class, stop — a leftover retry must never place a second Booking. An

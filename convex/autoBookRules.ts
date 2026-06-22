@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import { requirePoolDetails } from "./poolDetailsOps";
 import { requireUserId } from "./users";
 import { isoWeekday } from "./week";
@@ -43,9 +43,9 @@ async function requireOwnedRule(
  * always reflects the real schedule. Gated on Pool details (issue 05): a rule
  * with no details could never book, so creation refuses until they are complete.
  *
- * Idempotent on the rule key `(weekday, startTime, nameMatch)`: a repeat call
- * for the same class re-enables the existing rule instead of inserting a
- * duplicate (which would make the cron double-book). Returns the rule id.
+ * Idempotent on `pid` (the pool's per-slot id): a repeat call for the same slot
+ * re-enables the existing rule instead of inserting a duplicate (which would
+ * make the cron double-book). Returns the rule id.
  */
 export const createFromClass = mutation({
   args: { pid: v.string(), date: v.string() },
@@ -63,19 +63,14 @@ export const createFromClass = mutation({
     const weekday = isoWeekday(cls.date);
     const { startTime, name: nameMatch } = cls;
 
-    // Idempotent on the canonical key: re-enable any existing match rather than
-    // duplicate it. A User's rule set is small, so scanning their own rows (via
-    // the userId index) is cheap and avoids a second compound index.
+    // Idempotent on pid: re-enable any existing rule for the same slot rather
+    // than duplicate it. A User's rule set is small, so scanning their own rows
+    // (via the userId index) is cheap and avoids a second index.
     const mine = await ctx.db
       .query("autoBookRules")
       .withIndex("userId", (q) => q.eq("userId", userId))
       .collect();
-    const existing = mine.find(
-      (r) =>
-        r.weekday === weekday &&
-        r.startTime === startTime &&
-        r.nameMatch === nameMatch,
-    );
+    const existing = mine.find((r) => r.pid === pid);
     if (existing) {
       if (!existing.enabled) {
         await ctx.db.patch("autoBookRules", existing._id, { enabled: true });
@@ -85,6 +80,7 @@ export const createFromClass = mutation({
 
     return await ctx.db.insert("autoBookRules", {
       userId,
+      pid,
       weekday,
       startTime,
       nameMatch,
@@ -138,5 +134,47 @@ export const deleteRule = mutation({
     const rule = await requireOwnedRule(ctx, ruleId);
     await ctx.db.delete("autoBookRules", rule._id);
     return null;
+  },
+});
+
+/**
+ * One-off migration: give legacy rules (created before `pid` resolution) their
+ * `pid`. For each rule missing it, find the slot in the cached schedule by the
+ * rule's `weekday` + `startTime` + `nameMatch`; if exactly one pid matches, set
+ * it. Ambiguous (2+) or vanished (0) slots are left unset — they resolve to
+ * `no_match` (the deliberate no-fallback behaviour) until re-created. Idempotent:
+ * rules that already have a pid are untouched, so it is safe to re-run.
+ */
+export const backfillRulePids = internalMutation({
+  args: {},
+  handler: async (
+    ctx,
+  ): Promise<{ total: number; filled: number; skipped: number }> => {
+    const rules = await ctx.db.query("autoBookRules").collect();
+    const classes = await ctx.db.query("classes").collect();
+    let filled = 0;
+    let skipped = 0;
+    for (const rule of rules) {
+      if (rule.pid !== undefined) continue;
+      const pids = [
+        ...new Set(
+          classes
+            .filter(
+              (c) =>
+                isoWeekday(c.date) === rule.weekday &&
+                c.startTime === rule.startTime &&
+                c.name === rule.nameMatch,
+            )
+            .map((c) => c.pid),
+        ),
+      ];
+      if (pids.length === 1) {
+        await ctx.db.patch("autoBookRules", rule._id, { pid: pids[0] });
+        filled += 1;
+      } else {
+        skipped += 1;
+      }
+    }
+    return { total: rules.length, filled, skipped };
   },
 });

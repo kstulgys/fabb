@@ -89,11 +89,13 @@ function seedRule(
     startTime: string;
     nameMatch: string;
     enabled: boolean;
+    pid: string;
   }> = {},
 ): Promise<Id<"autoBookRules">> {
   return t.run((ctx) =>
     ctx.db.insert("autoBookRules", {
       userId,
+      pid: CLASS.pid,
       weekday: 5,
       startTime: CLASS.startTime,
       nameMatch: CLASS.name,
@@ -172,8 +174,9 @@ describe("attemptRule — no match never books a wrong class", () => {
     setPoolGateway(fakeGateway);
     const userId = await seedOwner(t);
     const ruleId = await seedRule(t, userId);
-    // A class exists tomorrow but at a different time → must NOT be booked.
-    await seedClass(t, { startTime: "07:00", pid: "999" });
+    // A class exists tomorrow but with a different pid (the rule's slot is not
+    // offered) → must NOT be booked.
+    await seedClass(t, { pid: "999" });
 
     const res = await t.action(internal.autoBookAttempt.attemptRule, {
       ruleId,
@@ -191,12 +194,14 @@ describe("attemptRule — no match never books a wrong class", () => {
     expect(await scheduledAttempts(t)).toHaveLength(0);
   });
 
-  test("ambiguous: 2+ classes match → no_match, books nothing (never guesses)", async () => {
+  test("pid disambiguates two same-name+time classes → books exactly the rule's pid", async () => {
     const t = convexTest(schema, modules);
     setPoolGateway(fakeGateway);
+    bookResult = "registered";
     const userId = await seedOwner(t);
-    const ruleId = await seedRule(t, userId);
-    // Two classes share the rule's startTime + name (different pid) → ambiguous.
+    const ruleId = await seedRule(t, userId, { pid: "258" });
+    // Two classes tomorrow share the same name + startTime (what used to be
+    // "ambiguous"); only the pid differs. pid resolves it — never a guess.
     await seedClass(t, { pid: "258" });
     await seedClass(t, { pid: "259" });
 
@@ -207,11 +212,42 @@ describe("attemptRule — no match never books a wrong class", () => {
       now: EVE_NOW,
     });
 
+    expect(res).toEqual({ outcome: "registered", willRetry: false });
+    // Booked exactly the rule's pid, never the 259 twin.
+    expect(bookCalls).toEqual([
+      { pid: "258", date: TOMORROW, poolDetails: VALID },
+    ]);
+    const bookings = await t.run((ctx) => ctx.db.query("bookings").collect());
+    expect(bookings).toHaveLength(1);
+    expect(bookings[0]).toMatchObject({ pid: "258", date: TOMORROW });
+  });
+
+  test("a rule with no pid never falls back to name+time → no_match", async () => {
+    const t = convexTest(schema, modules);
+    setPoolGateway(fakeGateway);
+    const userId = await seedOwner(t);
+    // Legacy rule: no pid. A class with the SAME name + startTime exists
+    // tomorrow, but pid-only resolution must NOT fall back to it.
+    const ruleId = await t.run((ctx) =>
+      ctx.db.insert("autoBookRules", {
+        userId,
+        weekday: 5,
+        startTime: CLASS.startTime,
+        nameMatch: CLASS.name,
+        enabled: true,
+      }),
+    );
+    await seedClass(t);
+
+    const res = await t.action(internal.autoBookAttempt.attemptRule, {
+      ruleId,
+      date: TOMORROW,
+      attempt: 1,
+      now: EVE_NOW,
+    });
+
     expect(res).toEqual({ outcome: "no_match", willRetry: false });
     expect(bookCalls).toEqual([]);
-    expect(await t.run((ctx) => ctx.db.query("bookings").collect())).toEqual([]);
-    const runs = await t.run((ctx) => ctx.db.query("ruleRuns").collect());
-    expect(runs.map((r) => r.outcome)).toEqual(["no_match"]);
   });
 });
 
