@@ -4,21 +4,27 @@ import { internal } from "./_generated/api";
 /**
  * Scheduled jobs for the deployment.
  *
- * ADR-0002 (hybrid caching): a single centralized cron refreshes the shared
- * `classes` cache roughly hourly so every User reads the pool's current week
- * without anyone pressing a button and without per-user-view scraping — pool
- * load stays flat at any user count. The scrape
- * ({@link internal.pool.scrape.scrapeWeek}, slice 02) upserts keyed by
- * (pid, date), so a re-run refreshes rows in place and never duplicates them.
+ * ADR-0006 (two-week rolling cache, supersedes ADR-0002): a single centralized
+ * cron refreshes the shared `classes` cache once daily so every User reads the
+ * pool's two-week Schedule window (current + next week) without anyone pressing
+ * a button and without per-user-view scraping — pool load stays flat at any user
+ * count. The scrape ({@link internal.pool.scrape.scrapeWeek}, slice 02) upserts
+ * keyed by (pid, date), so a re-run refreshes rows in place and never duplicates
+ * them, and it reconciles each successfully-fetched week by deleting the
+ * future-dated rows that vanished from that fresh scrape (ADR-0006 future-only
+ * reconciliation; finished/today rows are always preserved).
  *
- * Uses `crons.interval` per `convex/_generated/ai/guidelines.md` (the
+ * `crons.cron` takes a UTC spec, so `0 22 * * *` fires ~00:00 Europe/Vilnius
+ * (±1h across DST — irrelevant for a refresh), landing well before the 05:00 UTC
+ * day-before autobook so tomorrow's classes are fresh before booking runs. Uses
+ * `crons.cron` per `convex/_generated/ai/guidelines.md` (the
  * `crons.hourly`/`daily`/`weekly` helpers are disallowed).
  */
 const crons = cronJobs();
 
-crons.interval(
+crons.cron(
   "refresh schedule",
-  { hours: 1 },
+  "0 22 * * *", // 22:00 UTC daily (~00:00 Vilnius)
   internal.pool.scrape.scrapeWeek,
   {},
 );
@@ -46,10 +52,10 @@ crons.cron(
  * The booking→Training-log conversion cron (issue 10). Hourly, it turns each
  * completed Booking — a held spot (`registered`/`already`) whose class end time
  * has passed (Europe/Vilnius) — into exactly one Training log; see
- * {@link internal.attendance.convertCompletedBookings}. Hourly matches the
- * schedule-refresh cadence and converts each finished class well within the
- * week it stays cached. The conversion is idempotent (dedupe on `bookingId`),
- * so the cadence affects only promptness, never correctness.
+ * {@link internal.attendance.convertCompletedBookings}. Hourly purely for
+ * promptness — the conversion is idempotent (dedupe on `bookingId`), so the
+ * cadence affects only how soon a finished class becomes a Training log, never
+ * correctness.
  */
 crons.interval(
   "convert completed bookings",

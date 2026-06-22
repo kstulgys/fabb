@@ -3,7 +3,7 @@ import { internalMutation, query } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
 import { caloriesColumns } from "./calories";
 import { requireUserId } from "./users";
-import { WEEKDAY_LABELS, resolveClock, weekDatesFor } from "./week";
+import { WEEKDAY_LABELS, resolveClock, weekDatesFor, weekStartsFor } from "./week";
 
 /**
  * One scraped class row. Calories/duration are optional because the pool omits
@@ -21,17 +21,38 @@ export const classRecord = v.object({
 });
 
 /** A single scraped class as written to the cache (the scrape action builds
- * these and hands them to {@link upsertClasses}). */
+ * these and hands them to {@link reconcileWeek}). */
 export type ClassRecord = Infer<typeof classRecord>;
 
 /**
- * Upsert scraped classes into the shared cache, keyed by `(pid, date)` so
- * re-running the scrape refreshes rows in place and never creates duplicates.
- * Internal: only the scrape action (and later, the cron) calls this.
+ * Reconcile one successfully-fetched week against its fresh scrape, in a single
+ * transaction: upsert every scraped row in place (keyed by `(pid, date)`, so a
+ * changed class refreshes and a re-run never duplicates), then delete the cached
+ * rows in `[weekStart, weekEnd]` that VANISHED from the scrape — but only those
+ * with `date > today` (Europe/Vilnius).
+ *
+ * Two invariants keep the delete safe (ADR-0006):
+ *  1. A finished/today class (`date <= today`) is NEVER deleted: the attendance
+ *     conversion (`attendance.convertCompletedBookings`) reads the cached class
+ *     row to build the Training log, so dropping a finished-but-unconverted
+ *     class would silently lose attendance.
+ *  2. This mutation ASSUMES a successful, non-empty scrape — it does not itself
+ *     guard the empty/failed case. `pool/scrape.ts` skips any week whose fetch
+ *     threw or whose scrape came back empty, so reconcileWeek is never handed
+ *     `classes: []` from a failed/maintenance page and a week's rows are never
+ *     wiped as if "all cancelled".
+ *
+ * Internal: only the scrape action (and the daily cron behind it) calls this.
  */
-export const upsertClasses = internalMutation({
-  args: { classes: v.array(classRecord) },
-  handler: async (ctx, { classes }) => {
+export const reconcileWeek = internalMutation({
+  args: {
+    classes: v.array(classRecord),
+    weekStart: v.string(),
+    weekEnd: v.string(),
+    today: v.string(),
+  },
+  handler: async (ctx, { classes, weekStart, weekEnd, today }) => {
+    // 1. Upsert every scraped row in place — a changed class refreshes here.
     for (const row of classes) {
       const existing = await ctx.db
         .query("classes")
@@ -45,7 +66,28 @@ export const upsertClasses = internalMutation({
         await ctx.db.insert("classes", row);
       }
     }
-    return { upserted: classes.length };
+
+    // 2. Delete the week's vanished FUTURE classes: a cached row in range that
+    //    is absent from the fresh scrape AND strictly after today. Finished and
+    //    today rows (`date <= today`) are preserved — the attendance guard
+    //    (invariant 1).
+    const scraped = new Set(classes.map((row) => `${row.pid}\u0000${row.date}`));
+    const cached = await ctx.db
+      .query("classes")
+      .withIndex("by_date", (q) =>
+        q.gte("date", weekStart).lte("date", weekEnd),
+      )
+      .collect();
+
+    let deleted = 0;
+    for (const row of cached) {
+      if (row.date <= today) continue; // never delete finished/today
+      if (scraped.has(`${row.pid}\u0000${row.date}`)) continue; // still offered
+      await ctx.db.delete("classes", row._id);
+      deleted += 1;
+    }
+
+    return { upserted: classes.length, deleted };
   },
 });
 
@@ -65,6 +107,24 @@ export interface WeekClasses {
 }
 
 /**
+ * Group class rows into a Mon→Sun week. `dates` is the week's seven ISO dates
+ * (Monday first, as {@link weekDatesFor} returns); each day collects the rows
+ * whose `date` matches and sorts them by start time. Pure, so both
+ * {@link weekClasses} and {@link scheduleWeeks} build their days through it and
+ * the grouping/ordering stays identical.
+ */
+export function groupWeek(rows: Doc<"classes">[], dates: string[]): WeekClasses {
+  const days = dates.map((date, i) => ({
+    weekday: WEEKDAY_LABELS[i],
+    date,
+    classes: rows
+      .filter((row) => row.date === date)
+      .sort((a, b) => a.startTime.localeCompare(b.startTime)),
+  }));
+  return { weekStart: dates[0], weekEnd: dates[6], days };
+}
+
+/**
  * The current Mon–Sun week's classes (Europe/Vilnius), grouped by day in
  * Monday-first order. `classes` is shared reference data that every User reads
  * (ADR-0002), so `requireUserId` here is purely an auth gate — it throws for
@@ -76,26 +136,44 @@ export const weekClasses = query({
     await requireUserId(ctx);
 
     const dates = weekDatesFor(resolveClock(now));
-    const weekStart = dates[0];
-    const weekEnd = dates[6];
+    const rows = await ctx.db
+      .query("classes")
+      .withIndex("by_date", (q) =>
+        q.gte("date", dates[0]).lte("date", dates[6]),
+      )
+      .collect();
+
+    return groupWeek(rows, dates);
+  },
+});
+
+/**
+ * The whole Schedule window — the current Mon–Sun week then the next — each
+ * grouped like {@link weekClasses} (ADR-0006: the scrape caches both weeks). The
+ * two Monday starts come from {@link weekStartsFor}; each is expanded to its
+ * seven dates, the 14-day range is read from `by_date` once, and
+ * {@link groupWeek} slices it into the two weeks. Same auth gate as
+ * {@link weekClasses}: `classes` is shared reference data (ADR-0002), so
+ * `requireUserId` only rejects signed-out callers.
+ */
+export const scheduleWeeks = query({
+  args: { now: v.optional(v.number()) },
+  handler: async (ctx, { now }): Promise<{ weeks: WeekClasses[] }> => {
+    await requireUserId(ctx);
+
+    const weekDates = weekStartsFor(resolveClock(now), 2).map((monday) =>
+      weekDatesFor(new Date(`${monday}T12:00:00Z`)),
+    );
+    const windowStart = weekDates[0][0];
+    const windowEnd = weekDates[weekDates.length - 1][6];
 
     const rows = await ctx.db
       .query("classes")
       .withIndex("by_date", (q) =>
-        q.gte("date", weekStart).lte("date", weekEnd),
+        q.gte("date", windowStart).lte("date", windowEnd),
       )
       .collect();
 
-    // Group into the seven known dates. The key set is fixed and the data is a
-    // single week, so a filter per day is simpler than a runtime Map.
-    const days = dates.map((date, i) => ({
-      weekday: WEEKDAY_LABELS[i],
-      date,
-      classes: rows
-        .filter((row) => row.date === date)
-        .sort((a, b) => a.startTime.localeCompare(b.startTime)),
-    }));
-
-    return { weekStart, weekEnd, days };
+    return { weeks: weekDates.map((dates) => groupWeek(rows, dates)) };
   },
 });

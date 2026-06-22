@@ -23,6 +23,7 @@ import { format, fromColumns } from "../../../convex/calories";
 import { classStatus, todayDate } from "../../../convex/week";
 import { ClassDetailDialog, StatusBadge } from "./class-detail";
 import { Intensity } from "./intensity";
+import { pickInitialView } from "./pick-initial-view";
 import { ScheduleSkeleton } from "./skeletons";
 
 /** A read-only fact in a class row: a small muted icon beside its value. */
@@ -189,16 +190,29 @@ function DayTab({
 }
 
 /**
- * The week schedule, one day at a time. A seven-day strip selects the day
- * (today by default); only that day's classes show below, so the whole week is
- * a glance instead of a long scroll. Presentational: it takes the already-loaded
+ * The week schedule, one day at a time. A seven-day strip selects the day —
+ * the caller's `initialDate` when it lands in this week, else today, else the
+ * week's first day; only that day's classes show below, so the whole week is a
+ * glance instead of a long scroll. Presentational: it takes the already-loaded
  * week, so it can render from mock data and be unit-tested without Convex.
  */
-export function WeekSchedule({ week, now }: { week: WeekClasses; now: Date }) {
+export function WeekSchedule({
+  week,
+  now,
+  initialDate,
+}: {
+  week: WeekClasses;
+  now: Date;
+  initialDate?: string;
+}) {
   const today = todayDate(now);
   const [selected, setSelected] = useState<Doc<"classes"> | null>(null);
   const [activeDate, setActiveDate] = useState(
-    week.days.some((d) => d.date === today) ? today : week.days[0].date,
+    initialDate && week.days.some((d) => d.date === initialDate)
+      ? initialDate
+      : week.days.some((d) => d.date === today)
+        ? today
+        : week.days[0].date,
   );
   const activeDay =
     week.days.find((d) => d.date === activeDate) ?? week.days[0];
@@ -210,10 +224,10 @@ export function WeekSchedule({ week, now }: { week: WeekClasses; now: Date }) {
           <Icon color="colorPalette.fg" boxSize="5">
             <LuCalendarDays />
           </Icon>
-          <Heading size="md">This week</Heading>
+          <Heading size="md">Schedule</Heading>
         </HStack>
         <Text color="fg.muted" fontSize="sm">
-          {week.weekStart} – {week.weekEnd}. Only the current week is available.
+          {week.weekStart} – {week.weekEnd}
         </Text>
       </Stack>
 
@@ -279,19 +293,91 @@ export function WeekSchedule({ week, now }: { week: WeekClasses; now: Date }) {
   );
 }
 
+/** The "This week / Next week" selector above the day strip. Mirrors the main
+ * nav tabs: the active segment is teal foreground text only (no solid fill), so
+ * the toggle stays within the One Voice teal budget. */
+function WeekToggle({
+  weeks,
+  active,
+  onSelect,
+}: {
+  weeks: WeekClasses[];
+  active: number;
+  onSelect: (index: number) => void;
+}) {
+  return (
+    <HStack gap="1" role="tablist" aria-label="Schedule week">
+      {weeks.map((week, index) => {
+        const isActive = index === active;
+        return (
+          <Box
+            as="button"
+            key={week.weekStart}
+            role="tab"
+            aria-selected={isActive}
+            onClick={() => onSelect(index)}
+            px="3"
+            py="1.5"
+            rounded="md"
+            fontSize="sm"
+            fontWeight="medium"
+            color={isActive ? "colorPalette.fg" : "fg.muted"}
+            _hover={{ bg: "bg.muted" }}
+            _focusVisible={{
+              outline: "2px solid",
+              outlineColor: "colorPalette.focusRing",
+              outlineOffset: "2px",
+            }}
+          >
+            {index === 0 ? "This week" : "Next week"}
+          </Box>
+        );
+      })}
+    </HStack>
+  );
+}
+
 /**
- * Loads the current Mon–Sun week of pool classes from the shared `classes`
- * cache (ADR-0002) — populated by the scrape action, read reactively, never
- * scraped per view — and hands it to {@link WeekSchedule}. Opening a class
- * fetches its volatile free-spot count live (never cached).
+ * The loaded Schedule window: the week toggle above the selected week's day
+ * schedule. Split out from {@link WeekCalendar} so it mounts only once
+ * `scheduleWeeks` has resolved — its initial selection, the smart landing week
+ * and day from {@link pickInitialView} (current-unless-spent, today-as-anchor),
+ * is then computed from real data in `useState` initializers, no effect needed.
+ * One `now` for this render drives that choice and every status marking. The
+ * `initialDate` only "sticks" to the week that contains it, so toggling to the
+ * other week falls back to {@link WeekSchedule}'s own naive day default.
+ */
+function ScheduleWindow({ weeks, now }: { weeks: WeekClasses[]; now: Date }) {
+  const [initial] = useState(() => pickInitialView(weeks, now));
+  const [active, setActive] = useState(initial.weekIndex);
+  const week = weeks[active] ?? weeks[0];
+
+  return (
+    <Stack gap="5">
+      <WeekToggle weeks={weeks} active={active} onSelect={setActive} />
+      <WeekSchedule
+        key={week.weekStart}
+        week={week}
+        now={now}
+        initialDate={initial.date}
+      />
+    </Stack>
+  );
+}
+
+/**
+ * Loads the Schedule window (the current Mon–Sun week and the next) from the
+ * shared `classes` cache (ADR-0002) — populated by the scrape action, read
+ * reactively, never scraped per view — and hands it to {@link ScheduleWindow}
+ * once resolved. Opening a class fetches its volatile free-spot count live
+ * (never cached).
  */
 export function WeekCalendar() {
-  const week = useQuery(api.classes.weekClasses, {});
+  const data = useQuery(api.classes.scheduleWeeks, {});
 
-  if (week === undefined) {
+  if (data === undefined) {
     return <ScheduleSkeleton />;
   }
 
-  // One "now" for this render drives every status marking and the open dialog.
-  return <WeekSchedule week={week} now={new Date()} />;
+  return <ScheduleWindow weeks={data.weeks} now={new Date()} />;
 }

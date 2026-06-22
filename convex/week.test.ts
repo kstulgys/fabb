@@ -5,6 +5,7 @@ import {
   tomorrowDate,
   WEEKDAY_LABELS,
   weekDatesFor,
+  weekStartsFor,
   weekdayLabel,
 } from "./week";
 
@@ -42,6 +43,54 @@ describe("weekDatesFor (Europe/Vilnius)", () => {
     expect(WEEKDAY_LABELS.length).toBe(7);
     expect(WEEKDAY_LABELS[0]).toBe("Monday");
     expect(WEEKDAY_LABELS[6]).toBe("Sunday");
+  });
+});
+
+describe("weekStartsFor (Europe/Vilnius)", () => {
+  test("count 1 → just this week's Monday", () => {
+    // 2026-06-18 is a Thursday; its week's Monday is 2026-06-15.
+    expect(weekStartsFor(new Date("2026-06-18T10:00:00Z"), 1)).toEqual([
+      "2026-06-15",
+    ]);
+  });
+
+  test("count 2 → this Monday and next Monday, exactly 7 days apart", () => {
+    const [thisMon, nextMon] = weekStartsFor(
+      new Date("2026-06-18T10:00:00Z"),
+      2,
+    );
+    expect([thisMon, nextMon]).toEqual(["2026-06-15", "2026-06-22"]);
+    const gapDays =
+      (Date.parse(`${nextMon}T00:00:00Z`) -
+        Date.parse(`${thisMon}T00:00:00Z`)) /
+      86_400_000;
+    expect(gapDays).toBe(7);
+  });
+
+  test("first element is the Monday of the given day's own week (Sunday counts as that week)", () => {
+    // 2026-06-21 is a Sunday — it belongs to the 06-15 week, not the next one.
+    expect(weekStartsFor(new Date("2026-06-21T08:00:00Z"), 2)).toEqual([
+      "2026-06-15",
+      "2026-06-22",
+    ]);
+  });
+
+  test("spans a DST spring-forward without drifting (still 7 days apart)", () => {
+    // EU DST springs forward on 2026-03-29 (last Sunday of March). A Wednesday
+    // in that week must still yield 2026-03-23 and 2026-03-30 as the two
+    // Mondays — proof the civil-date math is immune to the 23-hour day.
+    expect(weekStartsFor(new Date("2026-03-25T12:00:00Z"), 2)).toEqual([
+      "2026-03-23",
+      "2026-03-30",
+    ]);
+  });
+
+  test("uses the Vilnius civil date at the UTC day boundary", () => {
+    // 22:30Z Sunday is already Monday 01:30 in Vilnius (UTC+3 summer), so the
+    // window starts on the next Monday — a naive UTC reading would say 06-15.
+    expect(weekStartsFor(new Date("2026-06-21T22:30:00Z"), 1)).toEqual([
+      "2026-06-22",
+    ]);
   });
 });
 
