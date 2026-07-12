@@ -1,36 +1,24 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# fabb
 
-## Getting Started
+Auto-booking for gym and group classes at the Fabijoniškės sports centre (Vilnius) — **[fabbin.app](https://fabbin.app)**
 
-First, run the development server:
+Browse the rolling two-week timetable, set standing AutoBook rules ("every Tuesday 18:00, HIIT"),
+and a day-before cron grabs the spot. Bookings, attendance history, and calories in one place.
+
+## Stack
+
+Next.js (App Router) · Convex (data, auth, crons) · Tailwind CSS · Vitest
+
+## Develop
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+bun install
+bunx convex dev   # backend
+bun run dev       # app on http://localhost:3000
+bun run test
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Sibling
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+[fabb-skill](https://github.com/kstulgys/fabb-skill) — a coding-agent skill that drives the same
+timetable and booking flow from the terminal.
