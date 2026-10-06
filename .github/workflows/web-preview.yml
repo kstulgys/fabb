@@ -1,0 +1,83 @@
+# The web app's previews: each pull request gets its own Worker,
+# fabb-pr-<number>, which this workflow deletes when the pull request
+# closes; each push to main deploys the Worker fabb-preview, the preview
+# of the default branch head. Only preview Workers get the preview test account.
+#
+# The app is built for Workers with vinext (`bun run build:worker`, see
+# vite.config.ts and wrangler.jsonc). The Convex backend is not deployed here:
+# the app talks to the Convex deployment in NEXT_PUBLIC_CONVEX_URL (the repository
+# variable when set, else the production deployment that fabbin.app uses).
+name: Web preview
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+  push:
+    branches: [main]
+
+concurrency:
+  group: web-preview-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event.action != 'closed' }}
+
+jobs:
+  deploy:
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    environment:
+      name: web-preview
+      url: ${{ steps.deploy.outputs.url }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun run build:worker
+        env:
+          CLOUDFLARE_ENV: preview
+          NEXT_PUBLIC_CONVEX_URL: ${{ vars.NEXT_PUBLIC_CONVEX_URL || 'https://happy-otter-123.convex.cloud' }}
+      - id: deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PREVIEW_TEST_EMAIL: ${{ secrets.PREVIEW_TEST_EMAIL }}
+          PREVIEW_TEST_PASSWORD: ${{ secrets.PREVIEW_TEST_PASSWORD }}
+          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          secrets=$(mktemp)
+          node -e 'process.stdout.write(JSON.stringify({ PREVIEW_TEST_EMAIL: process.env.PREVIEW_TEST_EMAIL, PREVIEW_TEST_PASSWORD: process.env.PREVIEW_TEST_PASSWORD }))' > "$secrets"
+          vars=(--var "BUILD_SHA:$SHA")
+          if [ -n "$PR" ]; then
+            bunx wrangler deploy --config dist/server/wrangler.json --secrets-file "$secrets" "${vars[@]}" --name "fabb-pr-$PR"
+            url="https://fabb-pr-$PR.kastprod.workers.dev"
+          else
+            bunx wrangler deploy --config dist/server/wrangler.json --secrets-file "$secrets" "${vars[@]}"
+            url="https://fabb-preview.kastprod.workers.dev"
+          fi
+          rm -f "$secrets"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "Preview: $url" >> "$GITHUB_STEP_SUMMARY"
+
+  # Deletes the pull request's Worker, with every version of it. Cloudflare
+  # answers 404 for a Worker that does not exist, so a rerun passes.
+  delete:
+    if: github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          worker="fabb-pr-$PR"
+          status=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "${CLOUDFLARE_API_BASE_URL:-https://api.cloudflare.com/client/v4}/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$worker")
+          case "$status" in
+            200) echo "Deleted the Worker $worker." ;;
+            404) echo "$worker does not exist." ;;
+            *) echo "::error::Cloudflare answered HTTP $status to the delete of the Worker $worker."; exit 1 ;;
+          esac

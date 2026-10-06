@@ -1,0 +1,33 @@
+# Deploys the web app to the production Worker `fabb` on each push to main. The
+# production Worker never gets the preview test account. (fabbin.app itself
+# still deploys through Vercel; see vercel.json.)
+name: Web production
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: web-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: web-production
+      url: https://fabb.kastprod.workers.dev
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun run build:worker
+        env:
+          NEXT_PUBLIC_CONVEX_URL: ${{ vars.NEXT_PUBLIC_CONVEX_URL || 'https://happy-otter-123.convex.cloud' }}
+      - env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: bunx wrangler deploy --config dist/server/wrangler.json --var "BUILD_SHA:$GITHUB_SHA"

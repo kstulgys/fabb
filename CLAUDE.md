@@ -24,3 +24,13 @@ before building or changing any UI.
 Design principles (from `PRODUCT.md`): **Truthful by default** ·
 **Set once, forget** · **Energy without gamification** · **Thumb-first** ·
 **Glanceable progress**.
+
+## Agent skills
+
+### Issue tracker
+
+Issues and specs live in the repository's GitHub Issues (`gh`). See `docs/agents/issue-tracker.md`.
+
+### Domain docs
+
+Single-context: one `GLOSSARY.md` and `docs/adr/` at the root. See `docs/agents/domain.md`.

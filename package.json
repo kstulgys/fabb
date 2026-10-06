@@ -2,12 +2,14 @@
   "name": "fabb",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "build:worker": "vite build"
   },
   "dependencies": {
     "@auth/core": "0.41.1",
@@ -15,26 +17,34 @@
     "@chakra-ui/react": "^3.36.0",
     "@convex-dev/auth": "^0.0.94",
     "@emotion/react": "^11.14.0",
+    "@vinext/cloudflare": "1.0.0-beta.11",
     "convex": "^1.41.0",
     "next": "16.2.9",
     "next-themes": "^0.4.6",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "react-icons": "^5.6.0",
-    "recharts": "^3.8.1"
+    "react-server-dom-webpack": "19.2.4",
+    "recharts": "^3.8.1",
+    "vinext": "1.0.0-beta.13"
   },
   "devDependencies": {
+    "@cloudflare/vite-plugin": "1.61.0",
     "@edge-runtime/vm": "5.0.0",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "6.1.1",
+    "@vitejs/plugin-rsc": "0.5.35",
     "babel-plugin-react-compiler": "1.0.0",
     "convex-test": "0.0.53",
     "eslint": "^9",
     "eslint-config-next": "16.2.9",
     "jose": "^6.2.3",
     "typescript": "^5",
-    "vitest": "4.1.9"
+    "vite": "8.3.1",
+    "vitest": "4.1.9",
+    "wrangler": "4.142.0"
   },
   "ignoreScripts": [
     "sharp",
@@ -42,6 +52,8 @@
   ],
   "trustedDependencies": [
     "sharp",
-    "unrs-resolver"
+    "unrs-resolver",
+    "esbuild",
+    "workerd"
   ]
 }
