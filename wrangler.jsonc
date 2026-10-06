@@ -1,0 +1,33 @@
+// `fabb` serves production, and the preview configuration
+// (`CLOUDFLARE_ENV=preview`) serves the previews: the Worker
+// `fabb-preview` for the default branch head, and one Worker
+// `fabb-pr-<number>` for each pull request, which CI deletes when the
+// pull request closes (.github/workflows/web-*.yml). Only the preview Workers
+// get the preview test account's secrets, so the account does not exist in
+// production. No Worker has version preview URLs, so a Worker serves only its
+// latest deployment. Workers Logs are on: the Factory's production monitor
+// reads the production Worker's error rate from them.
+//
+// The pool relay is a separate Worker with its own config in proxy-worker/.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "fabb",
+  "compatibility_date": "2026-09-28",
+  "compatibility_flags": ["nodejs_compat"],
+  "main": "vinext/server/fetch-handler",
+  "assets": {
+    "directory": "dist/client",
+    "not_found_handling": "none",
+    "binding": "ASSETS"
+  },
+  "workers_dev": true,
+  "preview_urls": false,
+  "observability": { "enabled": true },
+  "env": {
+    "preview": {
+      "name": "fabb-preview",
+      "workers_dev": true,
+      "preview_urls": false
+    }
+  }
+}
