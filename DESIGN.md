@@ -157,7 +157,7 @@ booking-status truth.
 
 ### Tertiary — The Status Set
 The four booking outcomes map to four hues, and this mapping is a **contract**,
-not a style choice (see ADR-0001 / `CONTEXT.md`):
+not a style choice (see ADR-0001 / `GLOSSARY.md`):
 - **Success Green** (`#16a34a`): `registered` — a spot truly confirmed.
 - **Info Blue** (`#2563eb`): `already` — already holding a spot.
 - **Warning Orange** (`#ea580c`): `full` — terminal, no spot, not an error.
