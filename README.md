@@ -18,6 +18,13 @@ bun run dev       # app on http://localhost:3000
 bun run test
 ```
 
+## Deploy previews
+
+Every pull request deploys a preview to Cloudflare Workers (`fabb-pr-<number>`), and pushes to
+`main` deploy `fabb-preview` and `fabb`; see `.github/workflows/web-*.yml`. The Workers build uses
+[vinext](https://vinext.dev) (`bun run build:worker`, `vite.config.ts`, `wrangler.jsonc`);
+`GET /api/health` reports the deployed commit.
+
 ## Sibling
 
 [fabb-skill](https://github.com/kstulgys/fabb-skill) — a coding-agent skill that drives the same
